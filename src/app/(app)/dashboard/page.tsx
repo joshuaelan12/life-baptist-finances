@@ -4,7 +4,7 @@
 import React, { useMemo } from 'react';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { DollarSign, Users, HandCoins, Landmark, LineChart, BarChart3, TrendingUp, TrendingDown, Loader2, AlertTriangle } from 'lucide-react';
+import { DollarSign, Users, HandCoins, Landmark, LineChart, TrendingUp, TrendingDown, Loader2, AlertTriangle, ReceiptText } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, LabelList } from 'recharts';
 import type { ChartConfig } from '@/components/ui/chart';
@@ -12,7 +12,7 @@ import { auth, db } from '@/lib/firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData } from 'react-firebase-hooks/firestore';
 import { collection, query, orderBy, Timestamp, where, type DocumentData, type QueryDocumentSnapshot, type SnapshotOptions } from 'firebase/firestore';
-import type { IncomeRecord, TitheRecord, IncomeRecordFirestore, TitheRecordFirestore } from '@/types';
+import type { IncomeRecord, TitheRecord, ExpenseRecord, IncomeRecordFirestore, TitheRecordFirestore, ExpenseRecordFirestore } from '@/types';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
@@ -59,16 +59,32 @@ const titheConverter = {
   }
 };
 
+const expenseConverter = {
+  toFirestore(record: ExpenseRecord): DocumentData {
+    const { id, date, createdAt, recordedByUserId, ...rest } = record;
+    const data: any = { ...rest, date: Timestamp.fromDate(date) };
+    if (recordedByUserId) data.recordedByUserId = recordedByUserId;
+    return data;
+  },
+  fromFirestore(snapshot: QueryDocumentSnapshot, options: SnapshotOptions): ExpenseRecord {
+    const data = snapshot.data(options) as Omit<ExpenseRecordFirestore, 'id'>;
+    return {
+      id: snapshot.id,
+      date: data.date instanceof Timestamp ? data.date.toDate() : new Date(),
+      category: data.category,
+      amount: data.amount,
+      description: data.description,
+      payee: data.payee,
+      paymentMethod: data.paymentMethod,
+      recordedByUserId: data.recordedByUserId,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : undefined,
+    };
+  }
+};
+
+
 // Mock data for parts not yet connected to real-time Firestore data
 const MOCK_PREVIOUS_PERIOD_TOTAL_INCOME = 2000000; // XAF
-const MOCK_MONTHLY_EXPENSES_DATA = [ // Keeping expenses mock for now
-  { month: "Jan", expenses: 1200000 },
-  { month: "Feb", expenses: 1300000 },
-  { month: "Mar", expenses: 1500000 },
-  { month: "Apr", expenses: 1400000 },
-  { month: "May", expenses: 1600000 },
-  { month: "Jun", expenses: 1700000 },
-];
 
 
 export default function DashboardPage() {
@@ -86,6 +102,13 @@ export default function DashboardPage() {
     : null;
   const [titheRecords, isLoadingTithes, errorTithes] = useCollectionData(tithesQuery);
 
+  const expensesCollectionRef = authUser ? collection(db, 'expense_records') : null;
+  const expensesQuery = expensesCollectionRef
+    ? query(expensesCollectionRef, orderBy('date', 'desc')).withConverter<ExpenseRecord>(expenseConverter)
+    : null;
+  const [expenseRecords, isLoadingExpenses, errorExpenses] = useCollectionData(expensesQuery);
+
+
   const financialSummary = useMemo(() => {
     let totalOfferings = 0;
     let otherIncome = 0;
@@ -96,18 +119,18 @@ export default function DashboardPage() {
       } else if (record.category === "Donation" || record.category === "Other") {
         otherIncome += record.amount;
       }
-      // Tithes from income_records (if any) are ignored here, assuming main tithes are in tithe_records
     });
 
     const totalTithes = titheRecords?.reduce((sum, record) => sum + record.amount, 0) || 0;
     const totalIncome = totalOfferings + totalTithes + otherIncome;
+    const totalExpenses = expenseRecords?.reduce((sum, record) => sum + record.amount, 0) || 0;
 
-    return { totalOfferings, totalTithes, otherIncome, totalIncome };
-  }, [incomeRecords, titheRecords]);
 
-  const { totalOfferings, totalTithes, otherIncome, totalIncome } = financialSummary;
+    return { totalOfferings, totalTithes, otherIncome, totalIncome, totalExpenses };
+  }, [incomeRecords, titheRecords, expenseRecords]);
+
+  const { totalOfferings, totalTithes, otherIncome, totalIncome, totalExpenses } = financialSummary;
   
-  // Previous period income remains mock for now
   const incomeChangePercentage = totalIncome && MOCK_PREVIOUS_PERIOD_TOTAL_INCOME
     ? ((totalIncome - MOCK_PREVIOUS_PERIOD_TOTAL_INCOME) / MOCK_PREVIOUS_PERIOD_TOTAL_INCOME) * 100
     : 0;
@@ -134,18 +157,21 @@ export default function DashboardPage() {
         }
       });
       
-      // Find corresponding mock expense data
-      const mockExpenseEntry = MOCK_MONTHLY_EXPENSES_DATA.find(e => e.month === monthName);
-      const monthlyExpenses = mockExpenseEntry ? mockExpenseEntry.expenses : 0; // Default to 0 if no mock data for the month
+      let monthlyExpensesTotal = 0;
+      expenseRecords?.forEach(record => {
+        if (record.date >= monthStart && record.date <= monthEnd) {
+          monthlyExpensesTotal += record.amount;
+        }
+      });
 
       dataForLast6Months.push({
         month: monthName,
         income: monthlyIncomeTotal,
-        expenses: monthlyExpenses, // Using mock expenses
+        expenses: monthlyExpensesTotal,
       });
     }
     return dataForLast6Months;
-  }, [incomeRecords, titheRecords]);
+  }, [incomeRecords, titheRecords, expenseRecords]);
   
   const incomeBreakdownData = useMemo(() => [
     { name: 'Offerings', value: totalOfferings, fill: "hsl(var(--chart-1))" },
@@ -159,7 +185,7 @@ export default function DashboardPage() {
   } satisfies ChartConfig;
 
   const formatCurrency = (value: number) => {
-    return `${value.toLocaleString('fr-CM', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} XAF`; // No decimals for XAF generally
+    return `${value.toLocaleString('fr-CM', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} XAF`;
   };
   
   const formatCurrencyWithDecimals = (value: number) => {
@@ -194,7 +220,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (isLoadingIncome || isLoadingTithes) {
+  if (isLoadingIncome || isLoadingTithes || isLoadingExpenses) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-100px)]">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -203,13 +229,13 @@ export default function DashboardPage() {
     );
   }
 
-  if (errorIncome || errorTithes) {
+  if (errorIncome || errorTithes || errorExpenses) {
     return (
       <Alert variant="destructive" className="mt-4">
         <AlertTriangle className="h-4 w-4" />
         <AlertTitle>Error Loading Data</AlertTitle>
         <AlertDescription>
-          {errorIncome?.message || errorTithes?.message || "Could not load financial data."}
+          {errorIncome?.message || errorTithes?.message || errorExpenses?.message || "Could not load financial data."}
         </AlertDescription>
       </Alert>
     );
@@ -221,7 +247,7 @@ export default function DashboardPage() {
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <StatCard
           title="Total Offerings"
           value={formatCurrency(totalOfferings)}
@@ -252,13 +278,20 @@ export default function DashboardPage() {
           }
           iconClassName={incomeChangePercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}
         />
+         <StatCard
+          title="Total Expenses"
+          value={formatCurrency(totalExpenses)}
+          icon={ReceiptText}
+          description="All recorded expenses"
+          className="xl:col-span-1" // Ensures it doesn't try to span if not enough space
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle>Income vs Expenses Overview</CardTitle>
-            <CardDescription>Monthly income (real-time) and expenses (mock) for the last 6 months.</CardDescription>
+            <CardDescription>Monthly income and expenses (real-time) for the last 6 months.</CardDescription>
           </CardHeader>
           <CardContent className="h-[350px] p-2">
             <ChartContainer config={incomeChartConfig} className="w-full h-full">
@@ -270,7 +303,7 @@ export default function DashboardPage() {
                   <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" formatter={(value, name, props) => {
                      const formattedValue = (props.payload?.name === 'Income' || props.payload?.name === 'Expenses') 
                                           ? formatCurrency(Number(value))
-                                          : `${Number(value).toLocaleString('fr-CM')} XAF`; // Fallback
+                                          : `${Number(value).toLocaleString('fr-CM')} XAF`; 
                      return (
                         <div className="flex flex-col">
                           <span className="text-muted-foreground">{props.payload?.month}</span>
@@ -324,7 +357,7 @@ export default function DashboardPage() {
         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
         <AlertTitle className="text-muted-foreground">Note</AlertTitle>
         <AlertDescription className="text-muted-foreground">
-          Expense data and "percentage from last period" for total income are currently using mock values. Real-time expense tracking and historical comparison will be implemented in a future update.
+          The "percentage from last period" for total income is currently using mock values. Historical comparison will be implemented in a future update.
         </AlertDescription>
       </Alert>
     </div>
