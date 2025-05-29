@@ -16,16 +16,45 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import type { ExpenseRecord, ExpenseFormValues, ExpenseCategory } from '@/types';
+import type { ExpenseRecord, ExpenseFormValues, ExpenseCategory, ExpenseRecordFirestore } from '@/types';
 import { expenseSchema, expenseCategories } from '@/types';
-import { addExpenseRecord, updateExpenseRecord, deleteExpenseRecord, expenseConverter } from '@/services/expenseService';
+import { addExpenseRecord, updateExpenseRecord, deleteExpenseRecord } from '@/services/expenseService';
 import { useToast } from "@/hooks/use-toast";
 import { auth, db } from '@/lib/firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData } from 'react-firebase-hooks/firestore';
-import { collection, query, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, Timestamp, type DocumentData, type QueryDocumentSnapshot, type SnapshotOptions } from 'firebase/firestore';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { User } from 'firebase/auth';
+
+
+// Firestore converter - moved here from expenseService.ts
+const expenseConverter = {
+  toFirestore(record: ExpenseRecord): DocumentData {
+    const { id, date, createdAt, recordedByUserId, ...rest } = record;
+    const data: any = { 
+      ...rest, 
+      date: Timestamp.fromDate(date),
+      recordedByUserId: recordedByUserId, 
+    };
+    if (!id) { 
+        data.createdAt = serverTimestamp();
+    }
+    return data;
+  },
+  fromFirestore(
+    snapshot: QueryDocumentSnapshot,
+    options: SnapshotOptions
+  ): ExpenseRecord {
+    const data = snapshot.data(options) as Omit<ExpenseRecordFirestore, 'id'>;
+    return {
+      id: snapshot.id,
+      ...data,
+      date: (data.date as Timestamp).toDate(),
+      createdAt: (data.createdAt as Timestamp)?.toDate(),
+    };
+  }
+};
 
 interface EditExpenseDialogProps {
   isOpen: boolean;

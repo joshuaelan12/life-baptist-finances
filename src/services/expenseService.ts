@@ -18,35 +18,8 @@ import type { ExpenseRecord, ExpenseRecordFirestore, ExpenseFormValues, ExpenseC
 
 const EXPENSES_COLLECTION = 'expense_records';
 
-// Firestore converter
-export const expenseConverter = {
-  toFirestore(record: ExpenseRecord): DocumentData {
-    const { id, date, createdAt, recordedByUserId, ...rest } = record;
-    const data: any = { 
-      ...rest, 
-      date: Timestamp.fromDate(date),
-      recordedByUserId: recordedByUserId, // Ensure this is passed
-    };
-    // createdAt will be handled by serverTimestamp on add, or preserved on update
-    if (!id) { // only add createdAt on new record
-        data.createdAt = serverTimestamp();
-    }
-    return data;
-  },
-  fromFirestore(
-    snapshot: QueryDocumentSnapshot,
-    options: SnapshotOptions
-  ): ExpenseRecord {
-    const data = snapshot.data(options) as Omit<ExpenseRecordFirestore, 'id'>;
-    return {
-      id: snapshot.id,
-      ...data,
-      date: (data.date as Timestamp).toDate(),
-      createdAt: (data.createdAt as Timestamp)?.toDate(),
-    };
-  }
-};
-
+// Note: expenseConverter was moved to src/app/(app)/expenses/page.tsx
+// as 'use server' files cannot export non-async function objects.
 
 export const addExpenseRecord = async (
   recordData: ExpenseFormValues,
@@ -61,7 +34,7 @@ export const addExpenseRecord = async (
       date: Timestamp.fromDate(recordData.date),
       recordedByUserId: userId,
       createdAt: serverTimestamp(),
-      category: recordData.category as ExpenseCategory, // Ensure type
+      category: recordData.category as ExpenseCategory, 
     });
     return docRef.id;
   } catch (error) {
@@ -73,7 +46,7 @@ export const addExpenseRecord = async (
 export const updateExpenseRecord = async (
   recordId: string,
   dataToUpdate: ExpenseFormValues,
-  userId: string // For potential future authorization checks
+  userId: string 
 ): Promise<void> => {
   if (!userId) {
     throw new Error('User ID is required to update an expense record.');
@@ -84,7 +57,6 @@ export const updateExpenseRecord = async (
     if (dataToUpdate.date) {
       updatePayload.date = Timestamp.fromDate(dataToUpdate.date);
     }
-    // We don't update recordedByUserId or createdAt on edits typically
     await updateDoc(recordRef, updatePayload);
   } catch (error) {
     console.error('Error updating expense record: ', error);
@@ -94,7 +66,7 @@ export const updateExpenseRecord = async (
 
 export const deleteExpenseRecord = async (
   recordId: string,
-  userId: string // For potential future authorization checks
+  userId: string 
 ): Promise<void> => {
    if (!userId) {
     throw new Error('User ID is required to delete an expense record.');
