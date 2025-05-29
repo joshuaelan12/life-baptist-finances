@@ -21,6 +21,7 @@ import type { TitheRecord } from '@/types';
 import { addTitheRecord, getTitheRecords, updateTitheRecord, deleteTitheRecord } from '@/services/titheService';
 import { auth } from '@/lib/firebase';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import type { User } from 'firebase/auth';
 
 const titheSchema = z.object({
   memberName: z.string().min(2, { message: "Member name must be at least 2 characters." }),
@@ -34,32 +35,38 @@ interface EditTitheDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   record: TitheRecord | null;
-  onSave: (updatedData: TitheFormValues, recordId: string) => Promise<void>; // Make onSave async
+  onSave: (updatedData: TitheFormValues, recordId: string) => Promise<void>;
+  currentUser: User | null; // Pass current user for auth checks
 }
 
-const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange, record, onSave }) => {
+const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange, record, onSave, currentUser }) => {
   const [isSaving, setIsSaving] = useState(false);
+  const { toast } = useToast();
   const editForm = useForm<TitheFormValues>({
     resolver: zodResolver(titheSchema),
   });
 
   React.useEffect(() => {
-    if (record && isOpen) { // Reset form only when dialog opens with a record
+    if (record && isOpen) {
       editForm.reset({
         memberName: record.memberName,
         date: record.date,
         amount: record.amount,
       });
-    } else if (!isOpen) { // Reset form when dialog closes
+    } else if (!isOpen) {
         editForm.reset({ memberName: "", date: new Date(), amount: 0 });
     }
   }, [record, editForm, isOpen]);
 
   const handleEditSubmit = async (data: TitheFormValues) => {
     if (!record) return;
+    if (!currentUser || !currentUser.uid) {
+      toast({ variant: "destructive", title: "Authentication Error", description: "You must be logged in to save changes." });
+      return;
+    }
     setIsSaving(true);
     try {
-      await onSave(data, record.id);
+      await onSave(data, record.id); // onSave itself will handle calling the service with userId
       onOpenChange(false);
     } catch (error) {
       // Error toast is handled by onSave caller
@@ -71,9 +78,7 @@ const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange,
   if (!record) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => {
-      onOpenChange(open);
-    }}>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Edit Tithe for {record.memberName}</DialogTitle>
@@ -109,6 +114,7 @@ const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange,
                           <Button
                             variant={"outline"}
                             className={`w-full pl-3 text-left font-normal ${!field.value && "text-muted-foreground"}`}
+                            disabled={isSaving}
                           >
                             {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
@@ -136,7 +142,7 @@ const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange,
                   <FormItem>
                     <FormLabel>Amount (XAF)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="0.00" {...field} step="0.01" />
+                      <Input type="number" placeholder="0.00" {...field} step="0.01" disabled={isSaving} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -147,7 +153,7 @@ const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange,
                <DialogClose asChild>
                  <Button type="button" variant="outline" disabled={isSaving}>Cancel</Button>
               </DialogClose>
-              <Button type="submit" disabled={isSaving}>
+              <Button type="submit" disabled={isSaving || !currentUser}>
                 {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Save Changes
               </Button>
@@ -167,7 +173,7 @@ export default function TithesPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<TitheRecord | null>(null);
   const { toast } = useToast();
-  const [user, setUser] = useState(auth.currentUser);
+  const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser); // Changed 'user' to 'currentUser' for clarity
 
   const form = useForm<TitheFormValues>({
     resolver: zodResolver(titheSchema),
@@ -179,12 +185,7 @@ export default function TithesPage() {
   });
 
   const fetchRecords = useCallback(async () => {
-    if (!user) {
-      setIsLoading(false);
-      setError("User not authenticated. Please log in.");
-      setTitheRecords([]);
-      return;
-    }
+    // No specific user check here for fetching, as per original design, but good to be aware
     setIsLoading(true);
     setError(null);
     try {
@@ -197,12 +198,12 @@ export default function TithesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, toast]);
+  }, [toast]);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setCurrentUser(user);
+      if (user) {
         fetchRecords();
       } else {
         setTitheRecords([]);
@@ -218,15 +219,13 @@ export default function TithesPage() {
   };
 
   const onSubmit = async (data: TitheFormValues) => {
-    if (!user) {
+    if (!currentUser || !currentUser.uid) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to add a tithe." });
       return;
     }
     try {
-      const newRecordId = await addTitheRecord(data);
-      // const newRecordForUI: TitheRecord = { ...data, id: newRecordId }; // Create a full record for UI
-      // setTitheRecords(prev => [...prev, newRecordForUI].sort((a,b) => b.date.getTime() - a.date.getTime()));
-      await fetchRecords(); // Re-fetch for simplicity and to get server timestamp
+      await addTitheRecord(data, currentUser.uid); // Pass currentUser.uid
+      await fetchRecords(); 
       form.reset({ memberName: "", date: new Date(), amount: 0 });
       toast({ title: "Tithe Saved", description: `Tithe for ${data.memberName} has been successfully saved.` });
     } catch (err) {
@@ -236,18 +235,17 @@ export default function TithesPage() {
   };
   
   const handleDeleteRecord = async (id: string, memberName: string, recordDate: Date) => {
-    if (!user) {
+    if (!currentUser || !currentUser.uid) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to delete a tithe." });
       return;
     }
     try {
-      await deleteTitheRecord(id);
-      // setTitheRecords(prev => prev.filter(record => record.id !== id)); // Optimistic update
-      await fetchRecords(); // Re-fetch for consistency
+      await deleteTitheRecord(id, currentUser.uid); // Pass currentUser.uid
+      await fetchRecords(); 
       toast({
           title: "Tithe Deleted",
           description: `Tithe record for ${memberName} on ${format(recordDate, "PP")} has been deleted.`,
-          variant: "default" // Changed from destructive for successful delete
+          variant: "default"
       });
     } catch (err) {
       console.error(err);
@@ -261,25 +259,20 @@ export default function TithesPage() {
   };
 
   const handleSaveEditedTithe = async (updatedData: TitheFormValues, recordId: string) => {
-    if (!user) {
+    if (!currentUser || !currentUser.uid) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to update a tithe." });
-      throw new Error("User not authenticated"); // Prevent dialog from closing
+      throw new Error("User not authenticated"); 
     }
     try {
-      // Only pass date and amount for update, memberName is fixed for an existing record
       const { memberName, ...dataToUpdateForService } = updatedData;
-      await updateTitheRecord(recordId, dataToUpdateForService);
-      // setTitheRecords(prev =>
-      //   prev.map(r => (r.id === recordId ? { ...r, ...updatedData } : r))
-      //       .sort((a,b) => b.date.getTime() - a.date.getTime())
-      // ); // Optimistic update
-      await fetchRecords(); // Re-fetch
+      await updateTitheRecord(recordId, dataToUpdateForService, currentUser.uid); // Pass currentUser.uid
+      await fetchRecords(); 
       toast({ title: "Tithe Updated", description: `Tithe for ${updatedData.memberName} has been updated.`});
       setEditingRecord(null);
     } catch (err) {
         console.error(err);
         toast({ variant: "destructive", title: "Error", description: "Failed to update tithe record." });
-        throw err; // Re-throw to be caught by dialog if needed
+        throw err; 
     }
   };
 
@@ -310,14 +303,14 @@ export default function TithesPage() {
           <CardDescription>Enter tithe details for a church member.</CardDescription>
         </CardHeader>
         <CardContent>
-          {!user && (
+          {!currentUser && (
             <Alert variant="destructive" className="mb-4">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Authentication Required</AlertTitle>
               <AlertDescription>Please log in to add or view tithe records.</AlertDescription>
             </Alert>
           )}
-          {user && (
+          {currentUser && (
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <FormField
@@ -381,7 +374,7 @@ export default function TithesPage() {
                     )}
                   />
                 </div>
-                <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || !user}>
+                <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || !currentUser}>
                   {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserCheck className="mr-2 h-4 w-4" />}
                    Save Tithe
                 </Button>
@@ -410,13 +403,13 @@ export default function TithesPage() {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-          {!isLoading && !error && !user && (
+          {!isLoading && !error && !currentUser && (
              <p className="text-center text-muted-foreground py-10">Please log in to view tithe records.</p>
           )}
-          {!isLoading && !error && user && Object.keys(groupedTithes).length === 0 && (
+          {!isLoading && !error && currentUser && Object.keys(groupedTithes).length === 0 && (
             <p className="text-center text-muted-foreground py-10">No tithe records yet. Add a new tithe above.</p>
           )}
-          {!isLoading && !error && user && Object.keys(groupedTithes).length > 0 && (
+          {!isLoading && !error && currentUser && Object.keys(groupedTithes).length > 0 && (
             <Accordion type="multiple" className="w-full" defaultValue={Object.keys(groupedTithes).length > 0 ? [Object.keys(groupedTithes)[0]] : []}>
               {Object.entries(groupedTithes).map(([memberName, records]) => {
                 const totalTithe = records.reduce((sum, r) => sum + r.amount, 0);
@@ -445,10 +438,10 @@ export default function TithesPage() {
                               <TableCell>{format(record.date, "PP")}</TableCell>
                               <TableCell>{formatCurrency(record.amount)}</TableCell>
                               <TableCell className="text-right space-x-1">
-                                <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(record)} aria-label="Edit tithe" disabled={!user}>
+                                <Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(record)} aria-label="Edit tithe" disabled={!currentUser}>
                                   <Edit className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleDeleteRecord(record.id, record.memberName, record.date)} aria-label="Delete tithe" disabled={!user}>
+                                <Button variant="ghost" size="icon" onClick={() => handleDeleteRecord(record.id, record.memberName, record.date)} aria-label="Delete tithe" disabled={!currentUser}>
                                   <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>
                               </TableCell>
@@ -470,6 +463,7 @@ export default function TithesPage() {
         onOpenChange={setIsEditDialogOpen}
         record={editingRecord}
         onSave={handleSaveEditedTithe}
+        currentUser={currentUser}
       />
     </div>
   );

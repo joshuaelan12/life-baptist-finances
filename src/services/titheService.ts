@@ -12,9 +12,9 @@ import {
   orderBy,
   serverTimestamp,
   Timestamp,
-  where,
+  // where, // Not currently used for auth checks here but could be
 } from 'firebase/firestore';
-import { db, auth } from '@/lib/firebase';
+import { db } from '@/lib/firebase'; // auth removed as auth.currentUser is unreliable in server actions here
 import type { TitheRecord, TitheRecordFirestore, TitheFormValues } from '@/types';
 
 const TITHES_COLLECTION = 'tithe_records';
@@ -27,20 +27,24 @@ const fromFirestore = (docData: any, id: string): TitheRecord => {
     id,
     date: data.date.toDate(),
     createdAt: data.createdAt?.toDate(),
+    // Ensure recordedByUserId is part of the returned object if it exists on docData
+    recordedByUserId: data.recordedByUserId,
   };
 };
 
 export const addTitheRecord = async (
-  recordData: Omit<TitheRecord, 'id' | 'recordedByUserId' | 'createdAt'>
+  recordData: Omit<TitheRecord, 'id' | 'recordedByUserId' | 'createdAt'>,
+  userId: string // Added userId parameter
 ): Promise<string> => {
-  if (!auth.currentUser) {
-    throw new Error('User not authenticated');
+  if (!userId) {
+    // This check relies on the client providing the userId
+    throw new Error('User ID was not provided to addTitheRecord service.');
   }
   try {
     const docRef = await addDoc(collection(db, TITHES_COLLECTION), {
       ...recordData,
       date: Timestamp.fromDate(recordData.date), // Convert JS Date to Firestore Timestamp
-      recordedByUserId: auth.currentUser.uid,
+      recordedByUserId: userId, // Use passed userId
       createdAt: serverTimestamp(),
     });
     return docRef.id;
@@ -65,10 +69,13 @@ export const getTitheRecords = async (): Promise<TitheRecord[]> => {
 
 export const updateTitheRecord = async (
   recordId: string,
-  dataToUpdate: Partial<TitheFormValues> // Using TitheFormValues as it contains date & amount
+  dataToUpdate: Partial<TitheFormValues>, // Using TitheFormValues as it contains date & amount
+  userId: string // Added userId parameter for consistency, though not directly used for auth check here yet
 ): Promise<void> => {
-  if (!auth.currentUser) {
-    throw new Error('User not authenticated');
+  if (!userId) {
+    // This check relies on the client providing the userId
+    // Could be used in future to verify if this userId is allowed to update this record
+    throw new Error('User ID was not provided to updateTitheRecord service.');
   }
   try {
     const recordRef = doc(db, TITHES_COLLECTION, recordId);
@@ -77,6 +84,8 @@ export const updateTitheRecord = async (
     if (dataToUpdate.date) {
       updatePayload.date = Timestamp.fromDate(dataToUpdate.date);
     }
+    // Note: We are not currently checking if the userId is authorized to update this specific record.
+    // That would require fetching the record first and comparing its recordedByUserId.
     await updateDoc(recordRef, updatePayload);
   } catch (error) {
     console.error('Error updating tithe record: ', error);
@@ -84,11 +93,17 @@ export const updateTitheRecord = async (
   }
 };
 
-export const deleteTitheRecord = async (recordId: string): Promise<void> => {
-  if (!auth.currentUser) {
-    throw new Error('User not authenticated');
+export const deleteTitheRecord = async (
+  recordId: string,
+  userId: string // Added userId parameter
+): Promise<void> => {
+  if (!userId) {
+    // This check relies on the client providing the userId
+    // Could be used in future to verify if this userId is allowed to delete this record
+    throw new Error('User ID was not provided to deleteTitheRecord service.');
   }
   try {
+    // Note: We are not currently checking if the userId is authorized to delete this specific record.
     await deleteDoc(doc(db, TITHES_COLLECTION, recordId));
   } catch (error) {
     console.error('Error deleting tithe record: ', error);
