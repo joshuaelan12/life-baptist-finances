@@ -1,11 +1,11 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Label } from "@/components/ui/label"; // Keep if used outside RHF, otherwise RHF provides it
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,10 +17,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import type { IncomeRecord, IncomeCategory } from '@/types';
-import { addIncomeRecord, getIncomeRecords, deleteIncomeRecord } from '@/services/incomeService';
+import type { IncomeRecord, IncomeCategory, IncomeRecordFirestore } from '@/types';
+import { addIncomeRecord, deleteIncomeRecord } from '@/services/incomeService';
 import { useToast } from "@/hooks/use-toast";
-import { auth } from '@/lib/firebase'; // For checking auth state
+import { auth, db } from '@/lib/firebase';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { useCollectionData } from 'react-firebase-hooks/firestore';
+import { collection, query, orderBy, Timestamp, type DocumentData, type QueryDocumentSnapshot, type SnapshotOptions } from 'firebase/firestore';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 const incomeSchema = z.object({
@@ -36,12 +39,45 @@ const incomeSchema = z.object({
 
 type IncomeFormValues = z.infer<typeof incomeSchema>;
 
+const incomeConverter = {
+  toFirestore(record: IncomeRecord): DocumentData {
+    // This is primarily for satisfying the converter type for withConverter.
+    // Actual writes are handled by the addIncomeRecord service function,
+    // which takes a simpler input type.
+    const { id, date, createdAt, recordedByUserId, ...rest } = record;
+    const data: any = {
+      ...rest,
+      date: Timestamp.fromDate(date), 
+    };
+    if (recordedByUserId) data.recordedByUserId = recordedByUserId;
+    // createdAt is handled by serverTimestamp in the service
+    return data;
+  },
+  fromFirestore(
+    snapshot: QueryDocumentSnapshot,
+    options: SnapshotOptions
+  ): IncomeRecord {
+    const data = snapshot.data(options) as Omit<IncomeRecordFirestore, 'id'>;
+    // Ensure Timestamps are correctly converted
+    const date = data.date instanceof Timestamp ? data.date.toDate() : new Date();
+    const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : undefined;
+
+    return {
+      id: snapshot.id,
+      date: date,
+      category: data.category,
+      amount: data.amount,
+      description: data.description,
+      memberName: data.memberName,
+      recordedByUserId: data.recordedByUserId,
+      createdAt: createdAt,
+    };
+  }
+};
+
 export default function IncomePage() {
-  const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const [user, setUser] = useState(auth.currentUser);
+  const [authUser, authLoading, authError] = useAuthState(auth);
 
   const form = useForm<IncomeFormValues>({
     resolver: zodResolver(incomeSchema),
@@ -56,57 +92,25 @@ export default function IncomePage() {
 
   const selectedCategory = form.watch("category");
 
-  const fetchRecords = useCallback(async () => {
-    if (!user) {
-      setIsLoading(false);
-      setError("User not authenticated. Please log in.");
-      setIncomeRecords([]); // Clear records if user logs out
-      return;
-    }
-    setIsLoading(true);
-    setError(null);
-    try {
-      const records = await getIncomeRecords();
-      setIncomeRecords(records);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to fetch income records.");
-      toast({ variant: "destructive", title: "Error", description: "Could not fetch income records." });
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user, toast]);
-
-
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        fetchRecords();
-      } else {
-        // Handle user logged out state
-        setIncomeRecords([]);
-        setIsLoading(false);
-        setError("Please log in to manage income records.");
-      }
-    });
-    return () => unsubscribe(); // Cleanup subscription
-  }, [fetchRecords]);
-
+  // Real-time data fetching
+  const incomeCollectionRef = authUser ? collection(db, 'income_records') : null;
+  const incomeQuery = incomeCollectionRef 
+    ? query(incomeCollectionRef, orderBy('date', 'desc')).withConverter<IncomeRecord>(incomeConverter)
+    : null;
+  
+  const [incomeRecords, isLoadingData, errorData, snapshot] = useCollectionData(incomeQuery);
 
   const onSubmit = async (data: IncomeFormValues) => {
-    if (!user) {
+    if (!authUser) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to add income." });
       return;
     }
     try {
-      const newRecordId = await addIncomeRecord({
+      await addIncomeRecord({
         ...data,
         category: data.category as IncomeCategory,
       });
-      // Optimistically update UI or re-fetch
-      // For simplicity, re-fetching:
-      await fetchRecords();
+      // UI will update automatically due to useCollectionData
       form.reset();
       toast({ title: "Success", description: "Income record saved successfully." });
     } catch (err) {
@@ -116,10 +120,13 @@ export default function IncomePage() {
   };
   
   const handleDeleteRecord = async (id: string) => {
+    if (!authUser) {
+      toast({ variant: "destructive", title: "Error", description: "You must be logged in to delete records." });
+      return;
+    }
     try {
       await deleteIncomeRecord(id);
-      // Optimistically update UI or re-fetch
-      setIncomeRecords(prev => prev.filter(record => record.id !== id));
+      // UI will update automatically
       toast({ title: "Deleted", description: "Income record deleted successfully." });
     } catch (err) {
       console.error(err);
@@ -131,6 +138,27 @@ export default function IncomePage() {
     return `${value.toLocaleString('fr-CM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAF`;
   };
 
+  if (authLoading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-4 text-lg">Loading user...</p>
+      </div>
+    );
+  }
+  
+  if (authError) {
+     return (
+      <div className="space-y-6 md:space-y-8 p-4">
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Authentication Error</AlertTitle>
+          <AlertDescription>Could not load user session: {authError.message}</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 md:space-y-8">
       <h1 className="text-3xl font-bold tracking-tight text-foreground">Record Income</h1>
@@ -141,14 +169,14 @@ export default function IncomePage() {
           <CardDescription>Enter the details of the income received.</CardDescription>
         </CardHeader>
         <CardContent>
-          {!user && (
+          {!authUser && (
             <Alert variant="destructive" className="mb-4">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Authentication Required</AlertTitle>
               <AlertDescription>Please log in to add or view income records.</AlertDescription>
             </Alert>
           )}
-          {user && (
+          {authUser && (
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 <div className="grid md:grid-cols-2 gap-6">
@@ -164,6 +192,7 @@ export default function IncomePage() {
                               <Button
                                 variant={"outline"}
                                 className={`w-full pl-3 text-left font-normal ${!field.value && "text-muted-foreground"}`}
+                                disabled={form.formState.isSubmitting}
                               >
                                 {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
                                 <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
@@ -190,7 +219,7 @@ export default function IncomePage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Category</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={form.formState.isSubmitting}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select income category" />
@@ -216,7 +245,7 @@ export default function IncomePage() {
                     <FormItem>
                       <FormLabel>Amount (XAF)</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="0.00" {...field} step="0.01" />
+                        <Input type="number" placeholder="0.00" {...field} step="0.01" disabled={form.formState.isSubmitting}/>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -229,9 +258,9 @@ export default function IncomePage() {
                     name="memberName"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Member Name (Optional for 'Tithe' category)</FormLabel>
+                        <FormLabel>Member Name (For 'Tithe' category)</FormLabel>
                         <FormControl>
-                          <Input placeholder="Enter member's name" {...field} />
+                          <Input placeholder="Enter member's name" {...field} disabled={form.formState.isSubmitting}/>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -246,14 +275,14 @@ export default function IncomePage() {
                     <FormItem>
                       <FormLabel>Description (Optional)</FormLabel>
                       <FormControl>
-                        <Textarea placeholder="E.g., Special offering for youth ministry" {...field} />
+                        <Textarea placeholder="E.g., Special offering for youth ministry" {...field} disabled={form.formState.isSubmitting}/>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
                 
-                <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || !user}>
+                <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || !authUser}>
                   {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
                    Save Income
                 </Button>
@@ -268,26 +297,26 @@ export default function IncomePage() {
           <CardTitle>Recent Income Records</CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoading && (
+          {isLoadingData && (
             <div className="flex justify-center items-center py-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
               <p className="ml-2">Loading records...</p>
             </div>
           )}
-          {!isLoading && error && (
+          {!isLoadingData && errorData && (
              <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
+              <AlertTitle>Error Loading Records</AlertTitle>
+              <AlertDescription>{errorData.message}</AlertDescription>
             </Alert>
           )}
-          {!isLoading && !error && !user && (
+          {!isLoadingData && !errorData && !authUser && (
              <p className="text-center text-muted-foreground py-10">Please log in to view income records.</p>
           )}
-          {!isLoading && !error && user && incomeRecords.length === 0 && (
+          {!isLoadingData && !errorData && authUser && (!incomeRecords || incomeRecords.length === 0) && (
             <p className="text-center text-muted-foreground py-10">No income records yet. Add one above!</p>
           )}
-          {!isLoading && !error && user && incomeRecords.length > 0 && (
+          {!isLoadingData && !errorData && authUser && incomeRecords && incomeRecords.length > 0 && (
             <Table>
               <TableHeader>
                 <TableRow>
@@ -308,7 +337,7 @@ export default function IncomePage() {
                     <TableCell>{record.memberName || 'N/A'}</TableCell>
                     <TableCell className="max-w-[200px] truncate">{record.description || 'N/A'}</TableCell>
                     <TableCell className="text-right">
-                       <Button variant="ghost" size="icon" onClick={() => handleDeleteRecord(record.id)}>
+                       <Button variant="ghost" size="icon" onClick={() => handleDeleteRecord(record.id)} disabled={!authUser || form.formState.isSubmitting}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                           <span className="sr-only">Delete</span>
                        </Button>
@@ -323,3 +352,6 @@ export default function IncomePage() {
     </div>
   );
 }
+
+
+    
