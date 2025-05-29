@@ -7,14 +7,14 @@ import { getFirestore, type Firestore } from 'firebase/firestore';
 // import { getAnalytics, type Analytics } from "firebase/analytics";
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Optional
+  apiKey: "AIzaSyDmchdxVvres2FycHX7tRceuAyeA7bcwR0",
+  authDomain: "life-baptist-finances-88d5b.firebaseapp.com",
+  projectId: "life-baptist-finances-88d5b",
+  storageBucket: "life-baptist-finances-88d5b.firebasestorage.app",
+  messagingSenderId: "1079707286530",
+  appId: "1:1079707286530:web:18714ab5c627303adf7b1b"
 };
+
 
 // Initialize Firebase
 let app: FirebaseApp;
