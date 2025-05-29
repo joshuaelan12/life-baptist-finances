@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from 'react';
@@ -25,9 +26,9 @@ const titheSchema = z.object({
 type TitheFormValues = z.infer<typeof titheSchema>;
 
 const initialTitheRecords: TitheRecord[] = [
-  { id: 't1', memberName: 'Alice Wonderland', date: new Date(2023, 10, 5), amount: 150.00 },
-  { id: 't2', memberName: 'Bob The Builder', date: new Date(2023, 10, 12), amount: 200.50 },
-  { id: 't3', memberName: 'Charlie Brown', date: new Date(2023, 10, 19), amount: 175.75 },
+  { id: 't1', memberName: 'Alice Wonderland', date: new Date(2023, 10, 5), amount: 15000.00 },
+  { id: 't2', memberName: 'Bob The Builder', date: new Date(2023, 10, 12), amount: 20050.00 },
+  { id: 't3', memberName: 'Charlie Brown', date: new Date(2023, 10, 19), amount: 17575.00 },
 ];
 
 export default function TithesPage() {
@@ -54,6 +55,10 @@ export default function TithesPage() {
   
   const handleDeleteRecord = (id: string) => {
     setTitheRecords(prev => prev.filter(record => record.id !== id));
+  };
+
+  const formatCurrency = (value: number) => {
+    return `${value.toLocaleString('fr-CM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAF`;
   };
 
   return (
@@ -120,7 +125,7 @@ export default function TithesPage() {
                   name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Amount ($)</FormLabel>
+                      <FormLabel>Amount (XAF)</FormLabel>
                       <FormControl>
                         <Input type="number" placeholder="0.00" {...field} step="0.01" />
                       </FormControl>
@@ -162,7 +167,7 @@ export default function TithesPage() {
                   <TableRow key={record.id}>
                     <TableCell>{record.memberName}</TableCell>
                     <TableCell>{format(record.date, "PP")}</TableCell>
-                    <TableCell>${record.amount.toFixed(2)}</TableCell>
+                    <TableCell>{formatCurrency(record.amount)}</TableCell>
                     <TableCell className="text-right">
                        <Button variant="ghost" size="icon" onClick={() => handleDeleteRecord(record.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />

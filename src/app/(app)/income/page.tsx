@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState } from 'react';
@@ -32,9 +33,9 @@ const incomeSchema = z.object({
 type IncomeFormValues = z.infer<typeof incomeSchema>;
 
 const initialIncomeRecords: IncomeRecord[] = [
-  { id: '1', date: new Date(2023, 10, 5), category: 'Tithe', amount: 250, memberName: 'John Doe', description: 'November Tithe' },
-  { id: '2', date: new Date(2023, 10, 12), category: 'Offering', amount: 500, description: 'Sunday Offering' },
-  { id: '3', date: new Date(2023, 10, 15), category: 'Donation', amount: 1000, description: 'Building Fund' },
+  { id: '1', date: new Date(2023, 10, 5), category: 'Tithe', amount: 25000, memberName: 'John Doe', description: 'November Tithe' },
+  { id: '2', date: new Date(2023, 10, 12), category: 'Offering', amount: 50000, description: 'Sunday Offering' },
+  { id: '3', date: new Date(2023, 10, 15), category: 'Donation', amount: 100000, description: 'Building Fund' },
 ];
 
 
@@ -67,6 +68,10 @@ export default function IncomePage() {
   
   const handleDeleteRecord = (id: string) => {
     setIncomeRecords(prev => prev.filter(record => record.id !== id));
+  };
+
+  const formatCurrency = (value: number) => {
+    return `${value.toLocaleString('fr-CM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAF`;
   };
 
 
@@ -145,7 +150,7 @@ export default function IncomePage() {
                 name="amount"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Amount ($)</FormLabel>
+                    <FormLabel>Amount (XAF)</FormLabel>
                     <FormControl>
                       <Input type="number" placeholder="0.00" {...field} step="0.01" />
                     </FormControl>
@@ -218,7 +223,7 @@ export default function IncomePage() {
                   <TableRow key={record.id}>
                     <TableCell>{format(record.date, "PP")}</TableCell>
                     <TableCell>{record.category}</TableCell>
-                    <TableCell>${record.amount.toFixed(2)}</TableCell>
+                    <TableCell>{formatCurrency(record.amount)}</TableCell>
                     <TableCell>{record.memberName || 'N/A'}</TableCell>
                     <TableCell className="max-w-[200px] truncate">{record.description || 'N/A'}</TableCell>
                     <TableCell className="text-right">

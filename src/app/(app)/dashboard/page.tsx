@@ -1,3 +1,4 @@
+
 "use client";
 
 import { StatCard } from '@/components/dashboard/stat-card';
@@ -46,6 +47,10 @@ const incomeBreakdownData = [
 
 
 export default function DashboardPage() {
+  const formatCurrency = (value: number) => {
+    return `${value.toLocaleString('fr-CM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAF`;
+  };
+
   return (
     <div className="space-y-6 md:space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -56,30 +61,30 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Offerings"
-          value={`$${MOCK_FINANCIAL_DATA.totalOfferings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={formatCurrency(MOCK_FINANCIAL_DATA.totalOfferings)}
           icon={HandCoins}
           description="All offerings received this period"
         />
         <StatCard
           title="Total Tithes"
-          value={`$${MOCK_FINANCIAL_DATA.totalTithes.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={formatCurrency(MOCK_FINANCIAL_DATA.totalTithes)}
           icon={Users}
           description="Tithes from members"
         />
         <StatCard
           title="Other Income"
-          value={`$${MOCK_FINANCIAL_DATA.otherIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={formatCurrency(MOCK_FINANCIAL_DATA.otherIncome)}
           icon={Landmark}
           description="Donations, events, etc."
         />
         <StatCard
           title="Total Income"
-          value={`$${totalIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          value={formatCurrency(totalIncome)}
           icon={LineChart}
           description={
             <span className={`flex items-center ${incomeChangePercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
               {incomeChangePercentage >= 0 ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
-              {incomeChangePercentage.toFixed(1)}% from last period
+              {incomeChangePercentage.toLocaleString('fr-CM', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% from last period
             </span>
           }
           iconClassName={incomeChangePercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}
@@ -95,10 +100,10 @@ export default function DashboardPage() {
           <CardContent className="h-[350px] p-2">
             <ChartContainer config={incomeChartConfig} className="w-full h-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={incomeChartData} margin={{ top: 20, right: 0, left: -20, bottom: 5 }}>
+                <BarChart data={incomeChartData} margin={{ top: 20, right: 0, left: 0, bottom: 5 }}> {/* Adjusted left margin for XAF */}
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis tickFormatter={(value) => `$${value / 1000}k`} tickLine={false} axisLine={false} tickMargin={8} />
+                  <YAxis tickFormatter={(value) => `${value / 1000}k XAF`} tickLine={false} axisLine={false} tickMargin={8} width={70} />
                   <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
                   <ChartLegend content={<ChartLegendContent />} />
                   <Bar dataKey="income" fill="var(--color-income)" radius={[4, 4, 0, 0]} />
@@ -117,13 +122,18 @@ export default function DashboardPage() {
           <CardContent className="h-[350px] p-2">
              <ChartContainer config={{}} className="w-full h-full"> {/* Empty config, colors from data */}
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={incomeBreakdownData} layout="vertical" margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <BarChart data={incomeBreakdownData} layout="vertical" margin={{ top: 20, right: 40, left: 20, bottom: 5 }}> {/* Adjusted right margin for XAF label */}
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={(value) => `$${value / 1000}k`} />
+                  <XAxis type="number" tickFormatter={(value) => `${value / 1000}k XAF`} />
                   <YAxis dataKey="name" type="category" width={80} tickLine={false} axisLine={false} />
                   <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                     <LabelList dataKey="value" position="right" formatter={(value: number) => `$${value.toLocaleString()}`} className="fill-foreground text-xs"/>
+                     <LabelList 
+                       dataKey="value" 
+                       position="right" 
+                       formatter={(value: number) => `${Number(value).toLocaleString('fr-CM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAF`} 
+                       className="fill-foreground text-xs"
+                     />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
