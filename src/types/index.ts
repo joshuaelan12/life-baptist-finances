@@ -1,4 +1,15 @@
+
 import type { Timestamp } from 'firebase/firestore';
+import type { z } from 'zod'; // Import z for TitheFormValues
+
+// For TithesPage form
+const titheSchema = z.object({
+  memberName: z.string().min(2, { message: "Member name must be at least 2 characters." }),
+  date: z.date({ required_error: "Date is required." }),
+  amount: z.coerce.number().positive({ message: "Amount must be positive." }),
+});
+export type TitheFormValues = z.infer<typeof titheSchema>;
+
 
 export type IncomeCategory = "Offering" | "Tithe" | "Donation" | "Other";
 
@@ -32,8 +43,8 @@ export interface TitheRecord {
   memberName: string;
   date: Date; // JavaScript Date object
   amount: number;
-  recordedByUserId?: string; // Optional on client until save
-  createdAt?: Date; // Optional on client until save
+  recordedByUserId?: string; 
+  createdAt?: Date; 
 }
 
 // For data stored in Firestore, assuming we'll convert to TitheRecord on client
