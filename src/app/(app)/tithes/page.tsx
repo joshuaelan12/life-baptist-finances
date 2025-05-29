@@ -8,38 +8,34 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CalendarIcon, UserCheck, PlusCircle, Trash2, Edit, Loader2, AlertTriangle } from "lucide-react";
+import { CalendarIcon, UserCheck, PlusCircle, Trash2, Edit, Loader2, AlertTriangle, Search } from "lucide-react";
 import { format } from "date-fns";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-// Removed local z import as titheSchema will be imported
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { TitheRecord } from '@/types';
-import { titheSchema, type TitheFormValues } from '@/types'; // Import schema and type
+import { titheSchema, type TitheFormValues } from '@/types'; 
 import { addTitheRecord, getTitheRecords, updateTitheRecord, deleteTitheRecord } from '@/services/titheService';
 import { auth } from '@/lib/firebase';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { User } from 'firebase/auth';
-
-// Removed local titheSchema definition
-// Removed local TitheFormValues export
 
 interface EditTitheDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   record: TitheRecord | null;
   onSave: (updatedData: TitheFormValues, recordId: string) => Promise<void>;
-  currentUser: User | null; // Pass current user for auth checks
+  currentUser: User | null; 
 }
 
 const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange, record, onSave, currentUser }) => {
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const editForm = useForm<TitheFormValues>({
-    resolver: zodResolver(titheSchema), // Use imported schema
+    resolver: zodResolver(titheSchema), 
   });
 
   React.useEffect(() => {
@@ -62,7 +58,7 @@ const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange,
     }
     setIsSaving(true);
     try {
-      await onSave(data, record.id); // onSave itself will handle calling the service with userId
+      await onSave(data, record.id); 
       onOpenChange(false);
     } catch (error) {
       // Error toast is handled by onSave caller
@@ -168,11 +164,12 @@ export default function TithesPage() {
   const [error, setError] = useState<string | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<TitheRecord | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser); // Changed 'user' to 'currentUser' for clarity
+  const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
 
   const form = useForm<TitheFormValues>({
-    resolver: zodResolver(titheSchema), // Use imported schema
+    resolver: zodResolver(titheSchema), 
     defaultValues: {
       memberName: "",
       date: new Date(),
@@ -181,7 +178,6 @@ export default function TithesPage() {
   });
 
   const fetchRecords = useCallback(async () => {
-    // No specific user check here for fetching, as per original design, but good to be aware
     setIsLoading(true);
     setError(null);
     try {
@@ -220,7 +216,7 @@ export default function TithesPage() {
       return;
     }
     try {
-      await addTitheRecord(data, currentUser.uid); // Pass currentUser.uid
+      await addTitheRecord(data, currentUser.uid); 
       await fetchRecords(); 
       form.reset({ memberName: "", date: new Date(), amount: 0 });
       toast({ title: "Tithe Saved", description: `Tithe for ${data.memberName} has been successfully saved.` });
@@ -236,7 +232,7 @@ export default function TithesPage() {
       return;
     }
     try {
-      await deleteTitheRecord(id, currentUser.uid); // Pass currentUser.uid
+      await deleteTitheRecord(id, currentUser.uid); 
       await fetchRecords(); 
       toast({
           title: "Tithe Deleted",
@@ -261,7 +257,7 @@ export default function TithesPage() {
     }
     try {
       const { memberName, ...dataToUpdateForService } = updatedData;
-      await updateTitheRecord(recordId, dataToUpdateForService, currentUser.uid); // Pass currentUser.uid
+      await updateTitheRecord(recordId, dataToUpdateForService, currentUser.uid); 
       await fetchRecords(); 
       toast({ title: "Tithe Updated", description: `Tithe for ${updatedData.memberName} has been updated.`});
       setEditingRecord(null);
@@ -272,13 +268,15 @@ export default function TithesPage() {
     }
   };
 
-  const groupedTithes = useMemo(() => {
+  const filteredTithes = useMemo(() => {
     const groups: { [key: string]: TitheRecord[] } = {};
     titheRecords.forEach(record => {
-      if (!groups[record.memberName]) {
-        groups[record.memberName] = [];
+      if (searchTerm === "" || record.memberName.toLowerCase().includes(searchTerm.toLowerCase())) {
+        if (!groups[record.memberName]) {
+          groups[record.memberName] = [];
+        }
+        groups[record.memberName].push(record);
       }
-      groups[record.memberName].push(record);
     });
     
     return Object.keys(groups)
@@ -287,7 +285,7 @@ export default function TithesPage() {
         acc[memberName] = groups[memberName].sort((a, b) => b.date.getTime() - a.date.getTime());
         return acc;
       }, {} as { [key: string]: TitheRecord[] });
-  }, [titheRecords]);
+  }, [titheRecords, searchTerm]);
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -383,9 +381,22 @@ export default function TithesPage() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Member Tithe Records</CardTitle>
-           <CardDescription>View and manage tithes grouped by member.</CardDescription>
+           <CardDescription>View and manage tithes grouped by member. Use the search bar to filter by name.</CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search by member name..."
+                className="pl-8 w-full md:w-1/2 lg:w-1/3"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                disabled={!currentUser || isLoading}
+              />
+            </div>
+          </div>
           {isLoading && (
             <div className="flex justify-center items-center py-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -402,12 +413,14 @@ export default function TithesPage() {
           {!isLoading && !error && !currentUser && (
              <p className="text-center text-muted-foreground py-10">Please log in to view tithe records.</p>
           )}
-          {!isLoading && !error && currentUser && Object.keys(groupedTithes).length === 0 && (
-            <p className="text-center text-muted-foreground py-10">No tithe records yet. Add a new tithe above.</p>
+          {!isLoading && !error && currentUser && Object.keys(filteredTithes).length === 0 && (
+            <p className="text-center text-muted-foreground py-10">
+              {searchTerm ? `No members found matching "${searchTerm}".` : "No tithe records yet. Add a new tithe above."}
+            </p>
           )}
-          {!isLoading && !error && currentUser && Object.keys(groupedTithes).length > 0 && (
-            <Accordion type="multiple" className="w-full" defaultValue={Object.keys(groupedTithes).length > 0 ? [Object.keys(groupedTithes)[0]] : []}>
-              {Object.entries(groupedTithes).map(([memberName, records]) => {
+          {!isLoading && !error && currentUser && Object.keys(filteredTithes).length > 0 && (
+            <Accordion type="multiple" className="w-full" defaultValue={Object.keys(filteredTithes).length > 0 ? [Object.keys(filteredTithes)[0]] : []}>
+              {Object.entries(filteredTithes).map(([memberName, records]) => {
                 const totalTithe = records.reduce((sum, r) => sum + r.amount, 0);
                 return (
                   <AccordionItem value={memberName} key={memberName}>
