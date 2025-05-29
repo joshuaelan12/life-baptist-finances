@@ -1,9 +1,9 @@
 
 import type { Timestamp } from 'firebase/firestore';
-import type { z } from 'zod'; // Import z for TitheFormValues
+import { z } from 'zod'; // Changed from import type
 
 // For TithesPage form
-const titheSchema = z.object({
+export const titheSchema = z.object({ // Added export
   memberName: z.string().min(2, { message: "Member name must be at least 2 characters." }),
   date: z.date({ required_error: "Date is required." }),
   amount: z.coerce.number().positive({ message: "Amount must be positive." }),

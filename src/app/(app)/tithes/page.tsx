@@ -12,24 +12,20 @@ import { CalendarIcon, UserCheck, PlusCircle, Trash2, Edit, Loader2, AlertTriang
 import { format } from "date-fns";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+// Removed local z import as titheSchema will be imported
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { TitheRecord } from '@/types';
+import { titheSchema, type TitheFormValues } from '@/types'; // Import schema and type
 import { addTitheRecord, getTitheRecords, updateTitheRecord, deleteTitheRecord } from '@/services/titheService';
 import { auth } from '@/lib/firebase';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { User } from 'firebase/auth';
 
-const titheSchema = z.object({
-  memberName: z.string().min(2, { message: "Member name must be at least 2 characters." }),
-  date: z.date({ required_error: "Date is required." }),
-  amount: z.coerce.number().positive({ message: "Amount must be positive." }),
-});
-
-export type TitheFormValues = z.infer<typeof titheSchema>; // Export for service usage
+// Removed local titheSchema definition
+// Removed local TitheFormValues export
 
 interface EditTitheDialogProps {
   isOpen: boolean;
@@ -43,7 +39,7 @@ const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange,
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const editForm = useForm<TitheFormValues>({
-    resolver: zodResolver(titheSchema),
+    resolver: zodResolver(titheSchema), // Use imported schema
   });
 
   React.useEffect(() => {
@@ -176,7 +172,7 @@ export default function TithesPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser); // Changed 'user' to 'currentUser' for clarity
 
   const form = useForm<TitheFormValues>({
-    resolver: zodResolver(titheSchema),
+    resolver: zodResolver(titheSchema), // Use imported schema
     defaultValues: {
       memberName: "",
       date: new Date(),
