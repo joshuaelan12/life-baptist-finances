@@ -4,14 +4,14 @@
 import React, { useMemo } from 'react';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { DollarSign, Users, HandCoins, Landmark, LineChart, TrendingUp, TrendingDown, Loader2, AlertTriangle, ReceiptText } from 'lucide-react';
+import { DollarSign, Users, HandCoins, Landmark, LineChart, TrendingUp, TrendingDown, Loader2, AlertTriangle, ReceiptText, Scale } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, LabelList } from 'recharts';
 import type { ChartConfig } from '@/components/ui/chart';
 import { auth, db } from '@/lib/firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData } from 'react-firebase-hooks/firestore';
-import { collection, query, orderBy, Timestamp, where, type DocumentData, type QueryDocumentSnapshot, type SnapshotOptions } from 'firebase/firestore';
+import { collection, query, orderBy, Timestamp, type DocumentData, type QueryDocumentSnapshot, type SnapshotOptions } from 'firebase/firestore';
 import type { IncomeRecord, TitheRecord, ExpenseRecord, IncomeRecordFirestore, TitheRecordFirestore, ExpenseRecordFirestore } from '@/types';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -124,12 +124,13 @@ export default function DashboardPage() {
     const totalTithes = titheRecords?.reduce((sum, record) => sum + record.amount, 0) || 0;
     const totalIncome = totalOfferings + totalTithes + otherIncome;
     const totalExpenses = expenseRecords?.reduce((sum, record) => sum + record.amount, 0) || 0;
+    const netBalance = totalIncome - totalExpenses;
 
 
-    return { totalOfferings, totalTithes, otherIncome, totalIncome, totalExpenses };
+    return { totalOfferings, totalTithes, otherIncome, totalIncome, totalExpenses, netBalance };
   }, [incomeRecords, titheRecords, expenseRecords]);
 
-  const { totalOfferings, totalTithes, otherIncome, totalIncome, totalExpenses } = financialSummary;
+  const { totalOfferings, totalTithes, otherIncome, totalIncome, totalExpenses, netBalance } = financialSummary;
   
   const incomeChangePercentage = totalIncome && MOCK_PREVIOUS_PERIOD_TOTAL_INCOME
     ? ((totalIncome - MOCK_PREVIOUS_PERIOD_TOTAL_INCOME) / MOCK_PREVIOUS_PERIOD_TOTAL_INCOME) * 100
@@ -247,7 +248,32 @@ export default function DashboardPage() {
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <StatCard
+          title="Total Income"
+          value={formatCurrency(totalIncome)}
+          icon={LineChart}
+          description={
+            <span className={`flex items-center ${incomeChangePercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+              {incomeChangePercentage >= 0 ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
+              {incomeChangePercentage.toLocaleString('fr-CM', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% from last period (mock)
+            </span>
+          }
+          iconClassName={incomeChangePercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}
+        />
+        <StatCard
+          title="Total Expenses"
+          value={formatCurrency(totalExpenses)}
+          icon={ReceiptText}
+          description="All recorded expenses"
+        />
+        <StatCard
+          title="Net Balance"
+          value={formatCurrency(netBalance)}
+          icon={Scale}
+          description="Income minus Expenses"
+          iconClassName={netBalance >= 0 ? 'text-emerald-500' : 'text-red-500'}
+        />
         <StatCard
           title="Total Offerings"
           value={formatCurrency(totalOfferings)}
@@ -265,25 +291,6 @@ export default function DashboardPage() {
           value={formatCurrency(otherIncome)}
           icon={Landmark}
           description="Donations, events, etc."
-        />
-        <StatCard
-          title="Total Income"
-          value={formatCurrency(totalIncome)}
-          icon={LineChart}
-          description={
-            <span className={`flex items-center ${incomeChangePercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-              {incomeChangePercentage >= 0 ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
-              {incomeChangePercentage.toLocaleString('fr-CM', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% from last period (mock)
-            </span>
-          }
-          iconClassName={incomeChangePercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}
-        />
-         <StatCard
-          title="Total Expenses"
-          value={formatCurrency(totalExpenses)}
-          icon={ReceiptText}
-          description="All recorded expenses"
-          className="xl:col-span-1" // Ensures it doesn't try to span if not enough space
         />
       </div>
 
@@ -363,5 +370,7 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
 
     
