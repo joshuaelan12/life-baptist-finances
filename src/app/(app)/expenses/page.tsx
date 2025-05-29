@@ -28,18 +28,18 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { User } from 'firebase/auth';
 
 
-// Firestore converter - moved here from expenseService.ts
+// Firestore converter
 const expenseConverter = {
   toFirestore(record: ExpenseRecord): DocumentData {
-    const { id, date, createdAt, recordedByUserId, ...rest } = record;
-    const data: any = { 
-      ...rest, 
-      date: Timestamp.fromDate(date),
-      recordedByUserId: recordedByUserId, 
+    // Destructure, excluding fields handled by services or not part of the stored data (like client-side 'id')
+    // createdAt is server-set for new records or pre-existing for updates.
+    const { id, createdAt, ...clientData } = record; 
+    
+    const data: Omit<ExpenseRecordFirestore, 'id' | 'createdAt'> = {
+      ...clientData, // Spreads category, amount, recordedByUserId, and optional fields
+      date: Timestamp.fromDate(record.date), // Ensure date is a Firestore Timestamp
     };
-    if (!id) { 
-        data.createdAt = serverTimestamp();
-    }
+    // Optional fields are already handled by the spread of clientData
     return data;
   },
   fromFirestore(
@@ -49,8 +49,13 @@ const expenseConverter = {
     const data = snapshot.data(options) as Omit<ExpenseRecordFirestore, 'id'>;
     return {
       id: snapshot.id,
-      ...data,
       date: (data.date as Timestamp).toDate(),
+      category: data.category,
+      amount: data.amount,
+      description: data.description,
+      payee: data.payee,
+      paymentMethod: data.paymentMethod,
+      recordedByUserId: data.recordedByUserId,
       createdAt: (data.createdAt as Timestamp)?.toDate(),
     };
   }
