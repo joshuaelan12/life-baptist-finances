@@ -1,79 +1,242 @@
 
 "use client";
 
+import React, { useMemo } from 'react';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { DollarSign, Users, HandCoins, Landmark, LineChart, BarChart3, TrendingUp, TrendingDown } from 'lucide-react';
+import { DollarSign, Users, HandCoins, Landmark, LineChart, BarChart3, TrendingUp, TrendingDown, Loader2, AlertTriangle } from 'lucide-react';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer, LabelList } from 'recharts';
 import type { ChartConfig } from '@/components/ui/chart';
+import { auth, db } from '@/lib/firebase';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { useCollectionData } from 'react-firebase-hooks/firestore';
+import { collection, query, orderBy, Timestamp, where, type DocumentData, type QueryDocumentSnapshot, type SnapshotOptions } from 'firebase/firestore';
+import type { IncomeRecord, TitheRecord, IncomeRecordFirestore, TitheRecordFirestore } from '@/types';
+import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-const MOCK_FINANCIAL_DATA = {
-  totalOfferings: 12500.75,
-  totalTithes: 8750.50,
-  otherIncome: 3200.00,
-  previousPeriodTotalIncome: 20000.00,
+// Firestore Converters
+const incomeConverter = {
+  toFirestore(record: IncomeRecord): DocumentData {
+    const { id, date, createdAt, recordedByUserId, ...rest } = record;
+    const data: any = { ...rest, date: Timestamp.fromDate(date) };
+    if (recordedByUserId) data.recordedByUserId = recordedByUserId;
+    return data;
+  },
+  fromFirestore(snapshot: QueryDocumentSnapshot, options: SnapshotOptions): IncomeRecord {
+    const data = snapshot.data(options) as Omit<IncomeRecordFirestore, 'id'>;
+    return {
+      id: snapshot.id,
+      date: data.date instanceof Timestamp ? data.date.toDate() : new Date(),
+      category: data.category,
+      amount: data.amount,
+      description: data.description,
+      memberName: data.memberName,
+      recordedByUserId: data.recordedByUserId,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : undefined,
+    };
+  }
 };
 
-const totalIncome = MOCK_FINANCIAL_DATA.totalOfferings + MOCK_FINANCIAL_DATA.totalTithes + MOCK_FINANCIAL_DATA.otherIncome;
-const incomeChangePercentage = ((totalIncome - MOCK_FINANCIAL_DATA.previousPeriodTotalIncome) / MOCK_FINANCIAL_DATA.previousPeriodTotalIncome) * 100;
-
-
-const incomeChartData = [
-  { month: "Jan", income: 4500, expenses: 2000 },
-  { month: "Feb", income: 5200, expenses: 2300 },
-  { month: "Mar", income: 6100, expenses: 2800 },
-  { month: "Apr", income: 5800, expenses: 2500 },
-  { month: "May", income: 6500, expenses: 3000 },
-  { month: "Jun", income: 7200, expenses: 3200 },
-];
-
-const incomeChartConfig = {
-  income: {
-    label: "Income",
-    color: "hsl(var(--chart-1))",
+const titheConverter = {
+  toFirestore(record: TitheRecord): DocumentData {
+    const { id, date, createdAt, recordedByUserId, ...rest } = record;
+    const data: any = { ...rest, date: Timestamp.fromDate(date) };
+    if (recordedByUserId) data.recordedByUserId = recordedByUserId;
+    return data;
   },
-  expenses: {
-    label: "Expenses",
-    color: "hsl(var(--chart-2))",
-  },
-} satisfies ChartConfig;
+  fromFirestore(snapshot: QueryDocumentSnapshot, options: SnapshotOptions): TitheRecord {
+    const data = snapshot.data(options) as Omit<TitheRecordFirestore, 'id'>;
+    return {
+      id: snapshot.id,
+      memberName: data.memberName,
+      date: data.date instanceof Timestamp ? data.date.toDate() : new Date(),
+      amount: data.amount,
+      recordedByUserId: data.recordedByUserId,
+      createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : undefined,
+    };
+  }
+};
 
-const incomeBreakdownData = [
-  { name: 'Offerings', value: MOCK_FINANCIAL_DATA.totalOfferings, fill: "hsl(var(--chart-1))" },
-  { name: 'Tithes', value: MOCK_FINANCIAL_DATA.totalTithes, fill: "hsl(var(--chart-2))" },
-  { name: 'Other', value: MOCK_FINANCIAL_DATA.otherIncome, fill: "hsl(var(--chart-3))" },
+// Mock data for parts not yet connected to real-time Firestore data
+const MOCK_PREVIOUS_PERIOD_TOTAL_INCOME = 2000000; // XAF
+const MOCK_MONTHLY_EXPENSES_DATA = [ // Keeping expenses mock for now
+  { month: "Jan", expenses: 1200000 },
+  { month: "Feb", expenses: 1300000 },
+  { month: "Mar", expenses: 1500000 },
+  { month: "Apr", expenses: 1400000 },
+  { month: "May", expenses: 1600000 },
+  { month: "Jun", expenses: 1700000 },
 ];
 
 
 export default function DashboardPage() {
+  const [authUser, authLoading, authError] = useAuthState(auth);
+
+  const incomeCollectionRef = authUser ? collection(db, 'income_records') : null;
+  const incomeQuery = incomeCollectionRef 
+    ? query(incomeCollectionRef, orderBy('date', 'desc')).withConverter<IncomeRecord>(incomeConverter)
+    : null;
+  const [incomeRecords, isLoadingIncome, errorIncome] = useCollectionData(incomeQuery);
+
+  const tithesCollectionRef = authUser ? collection(db, 'tithe_records') : null;
+  const tithesQuery = tithesCollectionRef
+    ? query(tithesCollectionRef, orderBy('date', 'desc')).withConverter<TitheRecord>(titheConverter)
+    : null;
+  const [titheRecords, isLoadingTithes, errorTithes] = useCollectionData(tithesQuery);
+
+  const financialSummary = useMemo(() => {
+    let totalOfferings = 0;
+    let otherIncome = 0;
+    
+    incomeRecords?.forEach(record => {
+      if (record.category === "Offering") {
+        totalOfferings += record.amount;
+      } else if (record.category === "Donation" || record.category === "Other") {
+        otherIncome += record.amount;
+      }
+      // Tithes from income_records (if any) are ignored here, assuming main tithes are in tithe_records
+    });
+
+    const totalTithes = titheRecords?.reduce((sum, record) => sum + record.amount, 0) || 0;
+    const totalIncome = totalOfferings + totalTithes + otherIncome;
+
+    return { totalOfferings, totalTithes, otherIncome, totalIncome };
+  }, [incomeRecords, titheRecords]);
+
+  const { totalOfferings, totalTithes, otherIncome, totalIncome } = financialSummary;
+  
+  // Previous period income remains mock for now
+  const incomeChangePercentage = totalIncome && MOCK_PREVIOUS_PERIOD_TOTAL_INCOME
+    ? ((totalIncome - MOCK_PREVIOUS_PERIOD_TOTAL_INCOME) / MOCK_PREVIOUS_PERIOD_TOTAL_INCOME) * 100
+    : 0;
+
+  const monthlyChartData = useMemo(() => {
+    const dataForLast6Months: { month: string; income: number; expenses: number }[] = [];
+    const today = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+      const targetMonthDate = subMonths(today, i);
+      const monthName = format(targetMonthDate, "MMM");
+      const monthStart = startOfMonth(targetMonthDate);
+      const monthEnd = endOfMonth(targetMonthDate);
+
+      let monthlyIncomeTotal = 0;
+      incomeRecords?.forEach(record => {
+        if (record.date >= monthStart && record.date <= monthEnd) {
+          monthlyIncomeTotal += record.amount;
+        }
+      });
+      titheRecords?.forEach(record => {
+        if (record.date >= monthStart && record.date <= monthEnd) {
+          monthlyIncomeTotal += record.amount;
+        }
+      });
+      
+      // Find corresponding mock expense data
+      const mockExpenseEntry = MOCK_MONTHLY_EXPENSES_DATA.find(e => e.month === monthName);
+      const monthlyExpenses = mockExpenseEntry ? mockExpenseEntry.expenses : 0; // Default to 0 if no mock data for the month
+
+      dataForLast6Months.push({
+        month: monthName,
+        income: monthlyIncomeTotal,
+        expenses: monthlyExpenses, // Using mock expenses
+      });
+    }
+    return dataForLast6Months;
+  }, [incomeRecords, titheRecords]);
+  
+  const incomeBreakdownData = useMemo(() => [
+    { name: 'Offerings', value: totalOfferings, fill: "hsl(var(--chart-1))" },
+    { name: 'Tithes', value: totalTithes, fill: "hsl(var(--chart-2))" },
+    { name: 'Other', value: otherIncome, fill: "hsl(var(--chart-3))" },
+  ], [totalOfferings, totalTithes, otherIncome]);
+
+  const incomeChartConfig = {
+    income: { label: "Income", color: "hsl(var(--chart-1))" },
+    expenses: { label: "Expenses", color: "hsl(var(--chart-2))" },
+  } satisfies ChartConfig;
+
   const formatCurrency = (value: number) => {
-    return `${value.toLocaleString('fr-CM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAF`;
+    return `${value.toLocaleString('fr-CM', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} XAF`; // No decimals for XAF generally
   };
+  
+  const formatCurrencyWithDecimals = (value: number) => {
+     return `${value.toLocaleString('fr-CM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAF`;
+  };
+
+  if (authLoading) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-100px)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <Alert variant="destructive" className="mt-4">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Authentication Error</AlertTitle>
+        <AlertDescription>{authError.message}</AlertDescription>
+      </Alert>
+    );
+  }
+  
+  if (!authUser) {
+     return (
+      <Alert variant="destructive" className="mt-4">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Not Authenticated</AlertTitle>
+        <AlertDescription>Please log in to view the dashboard.</AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (isLoadingIncome || isLoadingTithes) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-100px)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-2">Loading financial data...</p>
+      </div>
+    );
+  }
+
+  if (errorIncome || errorTithes) {
+    return (
+      <Alert variant="destructive" className="mt-4">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Error Loading Data</AlertTitle>
+        <AlertDescription>
+          {errorIncome?.message || errorTithes?.message || "Could not load financial data."}
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div className="space-y-6 md:space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h1 className="text-3xl font-bold tracking-tight text-foreground">Dashboard</h1>
-        {/* Add any header actions here if needed, e.g., date range picker */}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Total Offerings"
-          value={formatCurrency(MOCK_FINANCIAL_DATA.totalOfferings)}
+          value={formatCurrency(totalOfferings)}
           icon={HandCoins}
-          description="All offerings received this period"
+          description="All offerings received"
         />
         <StatCard
           title="Total Tithes"
-          value={formatCurrency(MOCK_FINANCIAL_DATA.totalTithes)}
+          value={formatCurrency(totalTithes)}
           icon={Users}
           description="Tithes from members"
         />
         <StatCard
           title="Other Income"
-          value={formatCurrency(MOCK_FINANCIAL_DATA.otherIncome)}
+          value={formatCurrency(otherIncome)}
           icon={Landmark}
           description="Donations, events, etc."
         />
@@ -84,7 +247,7 @@ export default function DashboardPage() {
           description={
             <span className={`flex items-center ${incomeChangePercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
               {incomeChangePercentage >= 0 ? <TrendingUp className="h-4 w-4 mr-1" /> : <TrendingDown className="h-4 w-4 mr-1" />}
-              {incomeChangePercentage.toLocaleString('fr-CM', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% from last period
+              {incomeChangePercentage.toLocaleString('fr-CM', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% from last period (mock)
             </span>
           }
           iconClassName={incomeChangePercentage >= 0 ? 'text-emerald-500' : 'text-red-500'}
@@ -95,19 +258,29 @@ export default function DashboardPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle>Income vs Expenses Overview</CardTitle>
-            <CardDescription>Monthly income and expenses for the last 6 months.</CardDescription>
+            <CardDescription>Monthly income (real-time) and expenses (mock) for the last 6 months.</CardDescription>
           </CardHeader>
           <CardContent className="h-[350px] p-2">
             <ChartContainer config={incomeChartConfig} className="w-full h-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={incomeChartData} margin={{ top: 20, right: 0, left: 0, bottom: 5 }}> {/* Adjusted left margin for XAF */}
+                <BarChart data={monthlyChartData} margin={{ top: 20, right: 0, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={8} />
-                  <YAxis tickFormatter={(value) => `${value / 1000}k XAF`} tickLine={false} axisLine={false} tickMargin={8} width={70} />
-                  <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" />} />
+                  <YAxis tickFormatter={(value) => `${(value / 1000).toLocaleString('fr-CM', { maximumFractionDigits: 0 })}k XAF`} tickLine={false} axisLine={false} tickMargin={8} width={80} />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="dot" formatter={(value, name, props) => {
+                     const formattedValue = (props.payload?.name === 'Income' || props.payload?.name === 'Expenses') 
+                                          ? formatCurrency(Number(value))
+                                          : `${Number(value).toLocaleString('fr-CM')} XAF`; // Fallback
+                     return (
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground">{props.payload?.month}</span>
+                          <span className="font-semibold">{`${name}: ${formattedValue}`}</span>
+                        </div>
+                     );
+                  }} />} />
                   <ChartLegend content={<ChartLegendContent />} />
-                  <Bar dataKey="income" fill="var(--color-income)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="expenses" fill="var(--color-expenses)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="income" fill="var(--color-income)" radius={[4, 4, 0, 0]} name="Income" />
+                  <Bar dataKey="expenses" fill="var(--color-expenses)" radius={[4, 4, 0, 0]} name="Expenses"/>
                 </BarChart>
               </ResponsiveContainer>
             </ChartContainer>
@@ -117,21 +290,27 @@ export default function DashboardPage() {
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle>Income Breakdown</CardTitle>
-            <CardDescription>Distribution of income sources for the current period.</CardDescription>
+            <CardDescription>Distribution of real-time income sources.</CardDescription>
           </CardHeader>
           <CardContent className="h-[350px] p-2">
-             <ChartContainer config={{}} className="w-full h-full"> {/* Empty config, colors from data */}
+             <ChartContainer config={{}} className="w-full h-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={incomeBreakdownData} layout="vertical" margin={{ top: 20, right: 40, left: 20, bottom: 5 }}> {/* Adjusted right margin for XAF label */}
+                <BarChart data={incomeBreakdownData} layout="vertical" margin={{ top: 20, right: 50, left: 20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={(value) => `${value / 1000}k XAF`} />
+                  <XAxis type="number" tickFormatter={(value) => `${(value / 1000).toLocaleString('fr-CM', { maximumFractionDigits: 0 })}k XAF`} />
                   <YAxis dataKey="name" type="category" width={80} tickLine={false} axisLine={false} />
-                  <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+                  <ChartTooltip cursor={false} content={<ChartTooltipContent formatter={(value, name) => {
+                     return (
+                        <div className="flex flex-col">
+                          <span className="font-semibold">{`${name}: ${formatCurrency(Number(value))}`}</span>
+                        </div>
+                     );
+                  }} />} />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                      <LabelList 
                        dataKey="value" 
                        position="right" 
-                       formatter={(value: number) => `${Number(value).toLocaleString('fr-CM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} XAF`} 
+                       formatter={(value: number) => formatCurrency(Number(value))} 
                        className="fill-foreground text-xs"
                      />
                   </Bar>
@@ -141,6 +320,15 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+      <Alert variant="default" className="bg-muted/50">
+        <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+        <AlertTitle className="text-muted-foreground">Note</AlertTitle>
+        <AlertDescription className="text-muted-foreground">
+          Expense data and "percentage from last period" for total income are currently using mock values. Real-time expense tracking and historical comparison will be implemented in a future update.
+        </AlertDescription>
+      </Alert>
     </div>
   );
 }
+
+    
