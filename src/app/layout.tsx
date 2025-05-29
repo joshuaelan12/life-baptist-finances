@@ -5,16 +5,9 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { GenkitClientProvider } from '@/components/layout/genkit-client-provider';
 
-
-const geistSans = GeistSans({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const geistMono = GeistMono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
+// Note: GeistSans and GeistMono are imported as objects directly.
+// We don't need to call them as functions like fonts from next/font/google.
+// Their .variable property provides the necessary class name.
 
 export const metadata: Metadata = {
   title: 'Life Baptist Finances',
@@ -28,7 +21,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
+      <body className={`${GeistSans.variable} ${GeistMono.variable} font-sans antialiased`}>
         <GenkitClientProvider>
           {children}
           <Toaster />
