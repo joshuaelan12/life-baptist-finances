@@ -57,6 +57,70 @@ export interface TitheRecordFirestore {
   createdAt: Timestamp;
 }
 
+// Expense Management Types
+export type ExpenseCategory = 
+  | "Utilities" 
+  | "Ministry Supplies" 
+  | "Salaries & Stipends" 
+  | "Rent/Mortgage" 
+  | "Outreach & Evangelism" 
+  | "Maintenance & Repairs" 
+  | "Administrative Costs"
+  | "Events & Programs"
+  | "Transportation"
+  | "Other";
+
+export const expenseCategories: ExpenseCategory[] = [
+  "Utilities", 
+  "Ministry Supplies", 
+  "Salaries & Stipends", 
+  "Rent/Mortgage", 
+  "Outreach & Evangelism", 
+  "Maintenance & Repairs", 
+  "Administrative Costs",
+  "Events & Programs",
+  "Transportation",
+  "Other"
+];
+
+// For Expense Page Form validation
+export const expenseSchema = z.object({
+  date: z.date({ required_error: "Date is required." }),
+  category: z.enum(expenseCategories as [ExpenseCategory, ...ExpenseCategory[]], { required_error: "Category is required." }),
+  amount: z.coerce.number().positive({ message: "Amount must be positive." }),
+  description: z.string().optional(),
+  payee: z.string().optional(),
+  paymentMethod: z.string().optional(),
+});
+
+export type ExpenseFormValues = z.infer<typeof expenseSchema>;
+
+// For data stored in Firestore
+export interface ExpenseRecordFirestore {
+  id: string;
+  date: Timestamp;
+  category: ExpenseCategory;
+  amount: number;
+  description?: string;
+  payee?: string;
+  paymentMethod?: string;
+  recordedByUserId: string;
+  createdAt: Timestamp;
+}
+
+// For client-side display and manipulation
+export interface ExpenseRecord {
+  id: string;
+  date: Date;
+  category: ExpenseCategory;
+  amount: number;
+  description?: string;
+  payee?: string;
+  paymentMethod?: string;
+  recordedByUserId: string;
+  createdAt?: Date;
+}
+
 
 export interface FinancialSummary {
   totalOfferings: number;
@@ -75,3 +139,4 @@ export interface FinancialTrendsOutput {
 export interface QuarterlyReportOutput {
   reportSummary: string;
 }
+

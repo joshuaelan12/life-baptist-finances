@@ -22,6 +22,7 @@ import {
   LogOut,
   Settings,
   Menu,
+  ReceiptText, // Added for Expenses
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -40,6 +41,7 @@ import { useToast } from '@/hooks/use-toast'; // For logout feedback
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/income', label: 'Income', icon: DollarSign },
+  { href: '/expenses', label: 'Expenses', icon: ReceiptText }, // Added Expenses
   { href: '/tithes', label: 'Tithes', icon: Users },
   { href: '/reports', label: 'Reports', icon: FileText },
 ];
@@ -61,14 +63,12 @@ export function AppSidebar() {
     }
   };
   
-  // Determine user's initials for AvatarFallback
-  // This is a placeholder. In a real app, you'd get this from user data.
   const user = auth.currentUser;
   const userName = user?.displayName || user?.email || "User";
   const userEmail = user?.email || "user@example.com";
   const getInitials = (name: string) => {
     const parts = name.split(' ');
-    if (parts.length > 1) {
+    if (parts.length > 1 && parts[0] && parts[parts.length -1]) {
       return parts[0][0].toUpperCase() + parts[parts.length -1][0].toUpperCase();
     }
     return name.substring(0,2).toUpperCase();
