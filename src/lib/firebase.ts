@@ -23,29 +23,16 @@ let db: Firestore;
 // let storage: FirebaseStorage; // Uncomment if you need Firebase Storage
 // let analytics: Analytics | null = null; // Uncomment if you need Firebase Analytics
 
-if (typeof window !== 'undefined' && !getApps().length) {
-  // Client-side initialization
+// Safer initialization pattern for both client and server
+if (!getApps().length) {
   app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-  db = getFirestore(app);
-  // storage = getStorage(app); // Initialize storage if needed
-  // analytics = getAnalytics(app); // Initialize analytics if needed
-} else if (getApps().length) {
-  // Reuse existing app instance on the client if hot-reloading or similar
-  app = getApp();
-  auth = getAuth(app);
-  db = getFirestore(app);
-  // storage = getStorage(app); // Initialize storage if needed
-  // analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
 } else {
-  // Server-side or build-time initialization (less common for client-focused apps but good practice)
-  // Note: For server-side auth and Firestore admin tasks, you'd use firebase-admin
-  // This basic client SDK init might still be useful for some build processes or server components
-  // that don't require admin privileges.
-  app = initializeApp(firebaseConfig); // Fallback, though direct server use often needs firebase-admin
-  auth = getAuth(app);
-  db = getFirestore(app);
+  app = getApp();
 }
+
+auth = getAuth(app);
+db = getFirestore(app);
 
 
 export { app, auth, db /*, storage, analytics */ };
+
