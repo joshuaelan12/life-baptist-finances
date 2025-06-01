@@ -2,7 +2,7 @@
 "use client";
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation'; // Import useRouter
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Sidebar,
   SidebarHeader,
@@ -11,7 +11,7 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-} from '@/components/ui/sidebar'; // Removed SidebarTrigger as it's handled in AppLayout
+} from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { AppLogo } from '@/components/icons';
 import {
@@ -22,7 +22,8 @@ import {
   LogOut,
   Settings,
   Menu,
-  ReceiptText, // Added for Expenses
+  ReceiptText,
+  History, // Added for Activity Log
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -34,16 +35,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSidebar } from '@/components/ui/sidebar';
-import { auth } from '@/lib/firebase'; // Import Firebase auth
-import { signOut } from 'firebase/auth'; // Import signOut
-import { useToast } from '@/hooks/use-toast'; // For logout feedback
+import { auth } from '@/lib/firebase';
+import { signOut } from 'firebase/auth';
+import { useToast } from '@/hooks/use-toast';
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/income', label: 'Income', icon: DollarSign },
-  { href: '/expenses', label: 'Expenses', icon: ReceiptText }, // Added Expenses
+  { href: '/expenses', label: 'Expenses', icon: ReceiptText },
   { href: '/tithes', label: 'Tithes', icon: Users },
   { href: '/reports', label: 'Reports', icon: FileText },
+  { href: '/activity-log', label: 'Activity Log', icon: History }, // Added Activity Log
 ];
 
 export function AppSidebar() {
@@ -62,7 +64,7 @@ export function AppSidebar() {
       toast({ title: "Logout Failed", description: "Could not log out. Please try again.", variant: "destructive" });
     }
   };
-  
+
   const user = auth.currentUser;
   const userName = user?.displayName || user?.email || "User";
   const userEmail = user?.email || "user@example.com";

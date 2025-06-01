@@ -27,19 +27,13 @@ import { collection, query, orderBy, Timestamp, type DocumentData, type QueryDoc
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { User } from 'firebase/auth';
 
-
-// Firestore converter
 const expenseConverter = {
   toFirestore(record: ExpenseRecord): DocumentData {
-    // Destructure, excluding fields handled by services or not part of the stored data (like client-side 'id')
-    // createdAt is server-set for new records or pre-existing for updates.
-    const { id, createdAt, ...clientData } = record; 
-    
+    const { id, createdAt, ...clientData } = record;
     const data: Omit<ExpenseRecordFirestore, 'id' | 'createdAt'> = {
-      ...clientData, // Spreads category, amount, recordedByUserId, and optional fields
-      date: Timestamp.fromDate(record.date), // Ensure date is a Firestore Timestamp
+      ...clientData,
+      date: Timestamp.fromDate(record.date),
     };
-    // Optional fields are already handled by the spread of clientData
     return data;
   },
   fromFirestore(
@@ -87,13 +81,13 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ isOpen, onOpenCha
         paymentMethod: record.paymentMethod || "",
       });
     } else if (!isOpen) {
-      editForm.reset({ 
-        date: new Date(), 
-        category: undefined, 
-        amount: 0, 
-        description: "", 
-        payee: "", 
-        paymentMethod: "" 
+      editForm.reset({
+        date: new Date(),
+        category: undefined,
+        amount: 0,
+        description: "",
+        payee: "",
+        paymentMethod: ""
       });
     }
   }, [record, editForm, isOpen]);
@@ -108,7 +102,7 @@ const EditExpenseDialog: React.FC<EditExpenseDialogProps> = ({ isOpen, onOpenCha
       await onSave(data, record.id);
       onOpenChange(false);
     } catch (error) {
-      // Error toast is handled by onSave caller (TithesPage/ExpensesPage)
+      // Error toast is handled by onSave caller
     } finally {
       setIsSaving(false);
     }
@@ -281,19 +275,19 @@ export default function ExpensesPage() {
   });
 
   const expensesCollectionRef = authUser ? collection(db, 'expense_records') : null;
-  const expensesQuery = expensesCollectionRef 
+  const expensesQuery = expensesCollectionRef
     ? query(expensesCollectionRef, orderBy('date', 'desc')).withConverter<ExpenseRecord>(expenseConverter)
     : null;
-  
+
   const [expenseRecords, isLoadingData, errorData] = useCollectionData(expensesQuery);
 
   const onSubmit = async (data: ExpenseFormValues) => {
-    if (!authUser?.uid) {
+    if (!authUser?.uid || !authUser.email) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to add expenses." });
       return;
     }
     try {
-      await addExpenseRecord(data, authUser.uid);
+      await addExpenseRecord(data, authUser.uid, authUser.displayName || authUser.email);
       form.reset({ date: new Date(), category: undefined, amount: 0, description: "", payee: "", paymentMethod: "" });
       toast({ title: "Success", description: "Expense record saved successfully." });
     } catch (err) {
@@ -301,14 +295,14 @@ export default function ExpensesPage() {
       toast({ variant: "destructive", title: "Error", description: "Failed to save expense record." });
     }
   };
-  
+
   const handleDeleteRecord = async (record: ExpenseRecord) => {
-    if (!authUser?.uid) {
+    if (!authUser?.uid || !authUser.email) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to delete records." });
       return;
     }
     try {
-      await deleteExpenseRecord(record.id, authUser.uid);
+      await deleteExpenseRecord(record.id, authUser.uid, authUser.displayName || authUser.email);
       toast({ title: "Deleted", description: `Expense record for ${format(record.date, "PP")} deleted successfully.` });
     } catch (err) {
       console.error(err);
@@ -322,18 +316,18 @@ export default function ExpensesPage() {
   };
 
   const handleSaveEditedExpense = async (updatedData: ExpenseFormValues, recordId: string) => {
-    if (!authUser?.uid) {
+    if (!authUser?.uid || !authUser.email) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to update an expense." });
-      throw new Error("User not authenticated"); 
+      throw new Error("User not authenticated");
     }
     try {
-      await updateExpenseRecord(recordId, updatedData, authUser.uid);
+      await updateExpenseRecord(recordId, updatedData, authUser.uid, authUser.displayName || authUser.email);
       toast({ title: "Expense Updated", description: `Expense dated ${format(updatedData.date, "PP")} has been updated.`});
-      setEditingRecord(null); // Close dialog is handled by onOpenChange in Dialog
+      setEditingRecord(null);
     } catch (err) {
         console.error(err);
         toast({ variant: "destructive", title: "Error", description: "Failed to update expense record." });
-        throw err; // Re-throw to be caught by dialog's submit handler
+        throw err;
     }
   };
 
@@ -349,7 +343,7 @@ export default function ExpensesPage() {
       </div>
     );
   }
-  
+
   if (authError) {
      return (
       <div className="space-y-6 md:space-y-8 p-4">
@@ -368,7 +362,7 @@ export default function ExpensesPage() {
         <ReceiptText className="mr-3 h-8 w-8 text-primary" />
         Record Expenses
       </h1>
-      
+
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Add New Expense</CardTitle>
@@ -507,7 +501,7 @@ export default function ExpensesPage() {
                     </FormItem>
                   )}
                 />
-                
+
                 <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || !authUser}>
                   {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
                    Save Expense

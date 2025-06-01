@@ -5,7 +5,6 @@ import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label"; // Keep if used outside RHF, otherwise RHF provides it
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -41,16 +40,12 @@ type IncomeFormValues = z.infer<typeof incomeSchema>;
 
 const incomeConverter = {
   toFirestore(record: IncomeRecord): DocumentData {
-    // This is primarily for satisfying the converter type for withConverter.
-    // Actual writes are handled by the addIncomeRecord service function,
-    // which takes a simpler input type.
     const { id, date, createdAt, recordedByUserId, ...rest } = record;
     const data: any = {
       ...rest,
-      date: Timestamp.fromDate(date), 
+      date: Timestamp.fromDate(date),
     };
     if (recordedByUserId) data.recordedByUserId = recordedByUserId;
-    // createdAt is handled by serverTimestamp in the service
     return data;
   },
   fromFirestore(
@@ -58,7 +53,6 @@ const incomeConverter = {
     options: SnapshotOptions
   ): IncomeRecord {
     const data = snapshot.data(options) as Omit<IncomeRecordFirestore, 'id'>;
-    // Ensure Timestamps are correctly converted
     const date = data.date instanceof Timestamp ? data.date.toDate() : new Date();
     const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : undefined;
 
@@ -92,41 +86,39 @@ export default function IncomePage() {
 
   const selectedCategory = form.watch("category");
 
-  // Real-time data fetching
   const incomeCollectionRef = authUser ? collection(db, 'income_records') : null;
-  const incomeQuery = incomeCollectionRef 
+  const incomeQuery = incomeCollectionRef
     ? query(incomeCollectionRef, orderBy('date', 'desc')).withConverter<IncomeRecord>(incomeConverter)
     : null;
-  
-  const [incomeRecords, isLoadingData, errorData, snapshot] = useCollectionData(incomeQuery);
+
+  const [incomeRecords, isLoadingData, errorData] = useCollectionData(incomeQuery);
 
   const onSubmit = async (data: IncomeFormValues) => {
-    if (!authUser) {
+    if (!authUser?.uid || !authUser.email) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to add income." });
       return;
     }
     try {
-      await addIncomeRecord({
-        ...data,
-        category: data.category as IncomeCategory,
-      });
-      // UI will update automatically due to useCollectionData
-      form.reset();
+      await addIncomeRecord(
+        { ...data, category: data.category as IncomeCategory },
+        authUser.uid,
+        authUser.displayName || authUser.email
+      );
+      form.reset({ date: new Date(), category: undefined, amount: 0, description: "", memberName: "" });
       toast({ title: "Success", description: "Income record saved successfully." });
     } catch (err) {
       console.error(err);
       toast({ variant: "destructive", title: "Error", description: "Failed to save income record." });
     }
   };
-  
+
   const handleDeleteRecord = async (id: string) => {
-    if (!authUser) {
+    if (!authUser?.uid || !authUser.email) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to delete records." });
       return;
     }
     try {
-      await deleteIncomeRecord(id);
-      // UI will update automatically
+      await deleteIncomeRecord(id, authUser.uid, authUser.displayName || authUser.email);
       toast({ title: "Deleted", description: "Income record deleted successfully." });
     } catch (err) {
       console.error(err);
@@ -146,7 +138,7 @@ export default function IncomePage() {
       </div>
     );
   }
-  
+
   if (authError) {
      return (
       <div className="space-y-6 md:space-y-8 p-4">
@@ -162,7 +154,7 @@ export default function IncomePage() {
   return (
     <div className="space-y-6 md:space-y-8">
       <h1 className="text-3xl font-bold tracking-tight text-foreground">Record Income</h1>
-      
+
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Add New Income</CardTitle>
@@ -219,7 +211,7 @@ export default function IncomePage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Category</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value} disabled={form.formState.isSubmitting}>
+                        <Select onValueChange={field.onChange} value={field.value} disabled={form.formState.isSubmitting}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select income category" />
@@ -281,7 +273,7 @@ export default function IncomePage() {
                     </FormItem>
                   )}
                 />
-                
+
                 <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || !authUser}>
                   {form.formState.isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-4 w-4" />}
                    Save Income
@@ -335,7 +327,7 @@ export default function IncomePage() {
                     <TableCell>{record.category}</TableCell>
                     <TableCell>{formatCurrency(record.amount)}</TableCell>
                     <TableCell>{record.memberName || 'N/A'}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{record.description || 'N/A'}</TableCell>
+                    <TableCell className="max-w-[200px] truncate" title={record.description}>{record.description || 'N/A'}</TableCell>
                     <TableCell className="text-right">
                        <Button variant="ghost" size="icon" onClick={() => handleDeleteRecord(record.id)} disabled={!authUser || form.formState.isSubmitting}>
                           <Trash2 className="h-4 w-4 text-destructive" />
@@ -352,6 +344,3 @@ export default function IncomePage() {
     </div>
   );
 }
-
-
-    

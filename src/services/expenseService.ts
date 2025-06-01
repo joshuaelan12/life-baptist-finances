@@ -15,15 +15,14 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type { ExpenseRecord, ExpenseRecordFirestore, ExpenseFormValues, ExpenseCategory } from '@/types';
+import { logActivity } from './activityLogService';
 
 const EXPENSES_COLLECTION = 'expense_records';
 
-// Note: expenseConverter was moved to src/app/(app)/expenses/page.tsx
-// as 'use server' files cannot export non-async function objects.
-
 export const addExpenseRecord = async (
   recordData: ExpenseFormValues,
-  userId: string
+  userId: string,
+  userDisplayName: string
 ): Promise<string> => {
   if (!userId) {
     throw new Error('User ID is required to add an expense record.');
@@ -34,7 +33,13 @@ export const addExpenseRecord = async (
       date: Timestamp.fromDate(recordData.date),
       recordedByUserId: userId,
       createdAt: serverTimestamp(),
-      category: recordData.category as ExpenseCategory, 
+      category: recordData.category as ExpenseCategory,
+    });
+
+    await logActivity(userId, userDisplayName, "CREATE_EXPENSE_RECORD", {
+      recordId: docRef.id,
+      collectionName: EXPENSES_COLLECTION,
+      extraInfo: `Amount: ${recordData.amount}, Category: ${recordData.category}`
     });
     return docRef.id;
   } catch (error) {
@@ -46,7 +51,8 @@ export const addExpenseRecord = async (
 export const updateExpenseRecord = async (
   recordId: string,
   dataToUpdate: ExpenseFormValues,
-  userId: string 
+  userId: string,
+  userDisplayName: string
 ): Promise<void> => {
   if (!userId) {
     throw new Error('User ID is required to update an expense record.');
@@ -58,6 +64,12 @@ export const updateExpenseRecord = async (
       updatePayload.date = Timestamp.fromDate(dataToUpdate.date);
     }
     await updateDoc(recordRef, updatePayload);
+
+    await logActivity(userId, userDisplayName, "UPDATE_EXPENSE_RECORD", {
+      recordId: recordId,
+      collectionName: EXPENSES_COLLECTION,
+      extraInfo: `Updated fields for expense.` // Could be more specific if old vs new values are tracked
+    });
   } catch (error) {
     console.error('Error updating expense record: ', error);
     throw error;
@@ -66,13 +78,18 @@ export const updateExpenseRecord = async (
 
 export const deleteExpenseRecord = async (
   recordId: string,
-  userId: string 
+  userId: string,
+  userDisplayName: string
 ): Promise<void> => {
    if (!userId) {
     throw new Error('User ID is required to delete an expense record.');
   }
   try {
     await deleteDoc(doc(db, EXPENSES_COLLECTION, recordId));
+    await logActivity(userId, userDisplayName, "DELETE_EXPENSE_RECORD", {
+      recordId: recordId,
+      collectionName: EXPENSES_COLLECTION
+    });
   } catch (error) {
     console.error('Error deleting expense record: ', error);
     throw error;

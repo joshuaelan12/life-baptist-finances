@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '@/lib/firebase';
 import type { IncomeRecord, IncomeRecordFirestore } from '@/types';
+import { logActivity } from './activityLogService';
 
 const INCOME_COLLECTION = 'income_records';
 
@@ -28,18 +29,27 @@ const fromFirestore = (docData: any, id: string): IncomeRecord => {
 };
 
 export const addIncomeRecord = async (
-  recordData: Omit<IncomeRecord, 'id' | 'recordedByUserId' | 'createdAt'>
+  recordData: Omit<IncomeRecord, 'id' | 'recordedByUserId' | 'createdAt'>,
+  userId: string, // Added for explicitness, though auth.currentUser.uid could be used
+  userDisplayName: string
 ): Promise<string> => {
-  if (!auth.currentUser) {
-    throw new Error('User not authenticated');
+  if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    throw new Error('User not authenticated or mismatched ID');
   }
   try {
     const docRef = await addDoc(collection(db, INCOME_COLLECTION), {
       ...recordData,
-      date: Timestamp.fromDate(recordData.date), // Convert JS Date to Firestore Timestamp
-      recordedByUserId: auth.currentUser.uid,
+      date: Timestamp.fromDate(recordData.date),
+      recordedByUserId: userId,
       createdAt: serverTimestamp(),
     });
+
+    await logActivity(userId, userDisplayName, "CREATE_INCOME_RECORD", {
+      recordId: docRef.id,
+      collectionName: INCOME_COLLECTION,
+      extraInfo: `Amount: ${recordData.amount}, Category: ${recordData.category}`
+    });
+
     return docRef.id;
   } catch (error) {
     console.error('Error adding income record: ', error);
@@ -49,27 +59,34 @@ export const addIncomeRecord = async (
 
 export const getIncomeRecords = async (): Promise<IncomeRecord[]> => {
   if (!auth.currentUser) {
-    // Or handle differently if records are public / church-wide but some are user-specific
-    // For now, let's assume records are tied to a user or are generally accessible by authenticated users.
-    // If they should be filtered by user, add a where clause:
-    // const q = query(collection(db, INCOME_COLLECTION), where("recordedByUserId", "==", auth.currentUser.uid), orderBy('date', 'desc'));
-    // For now, fetching all records ordered by date:
-    const q = query(collection(db, INCOME_COLLECTION), orderBy('date', 'desc'));
-    try {
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => fromFirestore(doc.data(), doc.id));
-    } catch (error) {
-      console.error('Error fetching income records: ', error);
-      throw error;
-    }
+    return [];
   }
-  // If no user, return empty or throw error, based on requirements
-  return []; 
+  const q = query(collection(db, INCOME_COLLECTION), orderBy('date', 'desc'));
+  try {
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => fromFirestore(doc.data(), doc.id));
+  } catch (error) {
+    console.error('Error fetching income records: ', error);
+    throw error;
+  }
 };
 
-export const deleteIncomeRecord = async (recordId: string): Promise<void> => {
+export const deleteIncomeRecord = async (
+  recordId: string,
+  userId: string,
+  userDisplayName: string
+): Promise<void> => {
+   if (!auth.currentUser || auth.currentUser.uid !== userId) {
+    throw new Error('User not authenticated or mismatched ID for deletion.');
+  }
   try {
+    // It might be good to fetch the record to log its details before deleting,
+    // but for simplicity, we'll just log the ID.
     await deleteDoc(doc(db, INCOME_COLLECTION, recordId));
+    await logActivity(userId, userDisplayName, "DELETE_INCOME_RECORD", {
+      recordId: recordId,
+      collectionName: INCOME_COLLECTION
+    });
   } catch (error) {
     console.error('Error deleting income record: ', error);
     throw error;

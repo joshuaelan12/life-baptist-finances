@@ -17,7 +17,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { TitheRecord } from '@/types';
-import { titheSchema, type TitheFormValues } from '@/types'; 
+import { titheSchema, type TitheFormValues } from '@/types';
 import { addTitheRecord, getTitheRecords, updateTitheRecord, deleteTitheRecord } from '@/services/titheService';
 import { auth } from '@/lib/firebase';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -28,14 +28,14 @@ interface EditTitheDialogProps {
   onOpenChange: (open: boolean) => void;
   record: TitheRecord | null;
   onSave: (updatedData: TitheFormValues, recordId: string) => Promise<void>;
-  currentUser: User | null; 
+  currentUser: User | null;
 }
 
 const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange, record, onSave, currentUser }) => {
   const [isSaving, setIsSaving] = useState(false);
   const { toast } = useToast();
   const editForm = useForm<TitheFormValues>({
-    resolver: zodResolver(titheSchema), 
+    resolver: zodResolver(titheSchema),
   });
 
   React.useEffect(() => {
@@ -58,7 +58,7 @@ const EditTitheDialog: React.FC<EditTitheDialogProps> = ({ isOpen, onOpenChange,
     }
     setIsSaving(true);
     try {
-      await onSave(data, record.id); 
+      await onSave(data, record.id);
       onOpenChange(false);
     } catch (error) {
       // Error toast is handled by onSave caller
@@ -166,10 +166,10 @@ export default function TithesPage() {
   const [editingRecord, setEditingRecord] = useState<TitheRecord | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
-  const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
+  const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser); // Keep this for UI checks
 
   const form = useForm<TitheFormValues>({
-    resolver: zodResolver(titheSchema), 
+    resolver: zodResolver(titheSchema),
     defaultValues: {
       memberName: "",
       date: new Date(),
@@ -211,13 +211,13 @@ export default function TithesPage() {
   };
 
   const onSubmit = async (data: TitheFormValues) => {
-    if (!currentUser || !currentUser.uid) {
+    if (!currentUser?.uid || !currentUser.email) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to add a tithe." });
       return;
     }
     try {
-      await addTitheRecord(data, currentUser.uid); 
-      await fetchRecords(); 
+      await addTitheRecord(data, currentUser.uid, currentUser.displayName || currentUser.email);
+      await fetchRecords();
       form.reset({ memberName: "", date: new Date(), amount: 0 });
       toast({ title: "Tithe Saved", description: `Tithe for ${data.memberName} has been successfully saved.` });
     } catch (err) {
@@ -225,15 +225,15 @@ export default function TithesPage() {
       toast({ variant: "destructive", title: "Error", description: "Failed to save tithe record." });
     }
   };
-  
+
   const handleDeleteRecord = async (id: string, memberName: string, recordDate: Date) => {
-    if (!currentUser || !currentUser.uid) {
+    if (!currentUser?.uid || !currentUser.email) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to delete a tithe." });
       return;
     }
     try {
-      await deleteTitheRecord(id, currentUser.uid); 
-      await fetchRecords(); 
+      await deleteTitheRecord(id, currentUser.uid, currentUser.displayName || currentUser.email);
+      await fetchRecords();
       toast({
           title: "Tithe Deleted",
           description: `Tithe record for ${memberName} on ${format(recordDate, "PP")} has been deleted.`,
@@ -251,20 +251,20 @@ export default function TithesPage() {
   };
 
   const handleSaveEditedTithe = async (updatedData: TitheFormValues, recordId: string) => {
-    if (!currentUser || !currentUser.uid) {
+    if (!currentUser?.uid || !currentUser.email) {
       toast({ variant: "destructive", title: "Error", description: "You must be logged in to update a tithe." });
-      throw new Error("User not authenticated"); 
+      throw new Error("User not authenticated");
     }
     try {
       const { memberName, ...dataToUpdateForService } = updatedData;
-      await updateTitheRecord(recordId, dataToUpdateForService, currentUser.uid); 
-      await fetchRecords(); 
+      await updateTitheRecord(recordId, dataToUpdateForService, currentUser.uid, currentUser.displayName || currentUser.email);
+      await fetchRecords();
       toast({ title: "Tithe Updated", description: `Tithe for ${updatedData.memberName} has been updated.`});
       setEditingRecord(null);
     } catch (err) {
         console.error(err);
         toast({ variant: "destructive", title: "Error", description: "Failed to update tithe record." });
-        throw err; 
+        throw err;
     }
   };
 
@@ -278,7 +278,7 @@ export default function TithesPage() {
         groups[record.memberName].push(record);
       }
     });
-    
+
     return Object.keys(groups)
       .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
       .reduce((acc, memberName) => {
@@ -290,7 +290,7 @@ export default function TithesPage() {
   return (
     <div className="space-y-6 md:space-y-8">
       <h1 className="text-3xl font-bold tracking-tight text-foreground">Manage Tithes</h1>
-      
+
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>Add New Tithe</CardTitle>
@@ -466,8 +466,8 @@ export default function TithesPage() {
           )}
         </CardContent>
       </Card>
-      
-      <EditTitheDialog 
+
+      <EditTitheDialog
         isOpen={isEditDialogOpen}
         onOpenChange={setIsEditDialogOpen}
         record={editingRecord}
