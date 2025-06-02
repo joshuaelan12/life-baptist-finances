@@ -112,6 +112,8 @@ export default function ReportsPage() {
   const [reportError, setReportError] = useState<string | null>(null);
   const [trendsError, setTrendsError] = useState<string | null>(null);
 
+  // START OF COMMENTED OUT LOGIC FOR DEBUGGING
+  /*
   const processedQuarterlyData = useMemo(() => {
     if (isLoadingIncome || isLoadingTithes || isLoadingExpenses || !incomeRecords || !titheRecords || !expenseRecords) return null;
 
@@ -236,56 +238,6 @@ export default function ReportsPage() {
     }
   };
 
-  if (authLoading) {
-    return (
-      <div className="flex justify-center items-center h-[calc(100vh-100px)]">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-2">Loading user session...</p>
-      </div>
-    );
-  }
-  
-  if (authError) {
-    return (
-      <Alert variant="destructive" className="mt-4">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Authentication Error</AlertTitle>
-        <AlertDescription>{authError.message || "Could not load user session."}</AlertDescription>
-      </Alert>
-    );
-  }
-
-  if (!authUser) {
-     return (
-      <Alert variant="destructive" className="mt-4">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Not Authenticated</AlertTitle>
-        <AlertDescription>Please log in to view and generate reports.</AlertDescription>
-      </Alert>
-    );
-  }
-
-  // Separate loading state for financial data after auth is confirmed
-  if (isLoadingIncome || isLoadingTithes || isLoadingExpenses) {
-    return (
-      <div className="flex justify-center items-center h-[calc(100vh-100px)]">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-2">Loading financial data for reports...</p>
-      </div>
-    );
-  }
-
-  // Error handling for financial data loading
-  if (errorIncome || errorTithes || errorExpenses) {
-     return (
-      <Alert variant="destructive" className="mt-4">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Error Loading Financial Data</AlertTitle>
-        <AlertDescription>{errorIncome?.message || errorTithes?.message || errorExpenses?.message || "Could not load financial data."}</AlertDescription>
-      </Alert>
-    );
-  }
-  
   const sourceDataAvailable = !!(incomeRecords && titheRecords && expenseRecords);
 
   const isProcessedQuarterlyDataEffectivelyEmpty = (
@@ -325,7 +277,58 @@ export default function ReportsPage() {
 
   const isQuarterlyReportGeneratedEmpty = quarterlyReport && !quarterlyReport.reportSummary;
   const isFinancialTrendsGeneratedEmpty = financialTrends && (!financialTrends.trends && !financialTrends.insights && !financialTrends.recommendations);
+  */
+  // END OF COMMENTED OUT LOGIC FOR DEBUGGING
 
+
+  if (authLoading) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-100px)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-2">Loading user session...</p>
+      </div>
+    );
+  }
+  
+  if (authError) {
+    return (
+      <Alert variant="destructive" className="mt-4">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Authentication Error</AlertTitle>
+        <AlertDescription>{authError.message || "Could not load user session."}</AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (!authUser) {
+     return (
+      <Alert variant="destructive" className="mt-4">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Not Authenticated</AlertTitle>
+        <AlertDescription>Please log in to view and generate reports.</AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (isLoadingIncome || isLoadingTithes || isLoadingExpenses) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-100px)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-2">Loading financial data for reports...</p>
+      </div>
+    );
+  }
+
+  if (errorIncome || errorTithes || errorExpenses) {
+     return (
+      <Alert variant="destructive" className="mt-4">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Error Loading Financial Data</AlertTitle>
+        <AlertDescription>{errorIncome?.message || errorTithes?.message || errorExpenses?.message || "Could not load financial data."}</AlertDescription>
+      </Alert>
+    );
+  }
+  
   // PARSER_CHECKPOINT: Just before main return statement
   return (
     <div className="space-y-6 md:space-y-8">
@@ -337,11 +340,14 @@ export default function ReportsPage() {
         <CardContent>
             <Alert variant="default" className="bg-muted/50">
                 <Sparkles className="h-4 w-4 text-primary" />
-                <AlertTitle className="text-primary">Live Data Mode</AlertTitle>
+                <AlertTitle className="text-primary">Live Data Mode (Logic Disabled for Debugging)</AlertTitle>
                 <AlertDescription>
-                Reports are generated using real-time financial data from your church records.
+                Reports are generated using real-time financial data.
                 The quarterly report uses data from the last 3 full months.
                 The trend analysis uses data from the last 12 full months.
+                (Most AI processing logic is temporarily commented out to find a parsing error. 
+                If this page loads, the error is within the commented-out section. 
+                Please uncomment it section by section locally to find the exact issue.)
                 </AlertDescription>
             </Alert>
         </CardContent>
@@ -355,8 +361,7 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <Button 
-              onClick={handleGenerateReport} 
-              disabled={isGeneratingReport || !sourceDataAvailable || noDataForQuarterlyReport} 
+              disabled={true} // Temporarily disabled for debugging
               className="w-full md:w-auto"
             >
               {isGeneratingReport ? (
@@ -364,26 +369,16 @@ export default function ReportsPage() {
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
-              Generate Quarterly Report
+              Generate Quarterly Report (Logic Disabled)
             </Button>
+            {/* Temporarily hide dynamic content for debugging */}
             {reportError && <Alert variant="destructive"><AlertTitle>Error</AlertTitle><AlertDescription>{reportError}</AlertDescription></Alert>}
-            {!reportError && !isGeneratingReport && noDataForQuarterlyReport && (
-                <Alert variant="default"><AlertTitle>No Data for Period</AlertTitle><AlertDescription>There is no financial data recorded for the last 3 full months. Please add records for that period to generate a report.</AlertDescription></Alert>
-            )}
+            {/* Add more placeholder or static content if needed during debugging */}
             {quarterlyReport && quarterlyReport.reportSummary && (
               <div className="mt-4 p-4 border rounded-md bg-muted/50">
                 <h3 className="font-semibold text-lg mb-2 text-primary">Generated Report Summary:</h3>
                 <p className="text-sm whitespace-pre-wrap">{quarterlyReport.reportSummary}</p>
               </div>
-            )}
-            {isQuarterlyReportGeneratedEmpty && !isGeneratingReport && !reportError && !noDataForQuarterlyReport && (
-              <Alert variant="default" className="mt-4">
-                <Sparkles className="h-4 w-4 text-primary" />
-                <AlertTitle>Report Generated - Summary Empty</AlertTitle>
-                <AlertDescription>
-                  The AI generated a report, but the summary is empty. This might occur if there's very little or no financial activity in the selected period, or the AI could not derive a summary.
-                </AlertDescription>
-              </Alert>
             )}
           </CardContent>
         </Card>
@@ -395,8 +390,7 @@ export default function ReportsPage() {
           </Header>
           <CardContent className="space-y-4">
             <Button 
-              onClick={handleIdentifyTrends} 
-              disabled={isIdentifyingTrends || !sourceDataAvailable || noDataForTrendAnalysis} 
+              disabled={true} // Temporarily disabled for debugging
               className="w-full md:w-auto"
             >
               {isIdentifyingTrends ? (
@@ -404,12 +398,11 @@ export default function ReportsPage() {
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
-              Identify Trends
+              Identify Trends (Logic Disabled)
             </Button>
+            {/* Temporarily hide dynamic content for debugging */}
             {trendsError && <Alert variant="destructive"><AlertTitle>Error</AlertTitle><AlertDescription>{trendsError}</AlertDescription></Alert>}
-             {!trendsError && !isIdentifyingTrends && noDataForTrendAnalysis && (
-                <Alert variant="default"><AlertTitle>No Data for Period</AlertTitle><AlertDescription>There is no financial data recorded for the last 12 full months. Please add records for that period to identify trends.</AlertDescription></Alert>
-            )}
+            {/* Add more placeholder or static content if needed during debugging */}
             {financialTrends && (financialTrends.trends || financialTrends.insights || financialTrends.recommendations) && (
               <div className="mt-4 p-4 border rounded-md bg-muted/50 space-y-3">
                 {financialTrends.trends && (
@@ -431,15 +424,6 @@ export default function ReportsPage() {
                   </div>
                 )}
               </div>
-            )}
-            {isFinancialTrendsGeneratedEmpty && !isIdentifyingTrends && !trendsError && !noDataForTrendAnalysis && (
-                 <Alert variant="default" className="mt-4">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                    <AlertTitle>Analysis Complete - Content Empty</AlertTitle>
-                    <AlertDescription>
-                    The AI completed the analysis, but the trends, insights, or recommendations are empty. This might occur if there's very little or no financial activity in the selected period, or the AI could not derive meaningful results.
-                    </AlertDescription>
-                </Alert>
             )}
           </CardContent>
         </Card>
