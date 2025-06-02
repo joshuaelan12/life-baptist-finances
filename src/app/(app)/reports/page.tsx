@@ -11,11 +11,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { auth, db } from '@/lib/firebase';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { useCollectionData } from 'react-firebase-hooks/firestore';
-import { collection, query, orderBy, Timestamp, type DocumentData, type QueryDocumentSnapshot, type SnapshotOptions } from 'firebase/firestore';
+import { collection, query, Timestamp, type DocumentData, type QueryDocumentSnapshot, type SnapshotOptions } from 'firebase/firestore';
 import type { IncomeRecord, TitheRecord, ExpenseRecord, IncomeRecordFirestore, TitheRecordFirestore, ExpenseRecordFirestore } from '@/types';
 import { format, subMonths, startOfMonth, endOfMonth, getYear, getMonth } from 'date-fns';
 
-// Firestore Converters (similar to DashboardPage)
+// Firestore Converters
 const incomeConverter = {
   toFirestore(record: IncomeRecord): DocumentData {
     const { id, date, createdAt, recordedByUserId, ...rest } = record;
@@ -112,11 +112,8 @@ export default function ReportsPage() {
   const [reportError, setReportError] = useState<string | null>(null);
   const [trendsError, setTrendsError] = useState<string | null>(null);
 
-  const isLoadingData = isLoadingIncome || isLoadingTithes || isLoadingExpenses || authLoading;
-  const dataError = errorIncome || errorTithes || errorExpenses || authError;
-
   const processedQuarterlyData = useMemo(() => {
-    if (!incomeRecords || !titheRecords || !expenseRecords) return null;
+    if (isLoadingIncome || isLoadingTithes || isLoadingExpenses || !incomeRecords || !titheRecords || !expenseRecords) return null;
 
     const today = new Date();
     const reportMonths: Date[] = [];
@@ -124,7 +121,6 @@ export default function ReportsPage() {
       reportMonths.push(startOfMonth(subMonths(today, i)));
     }
 
-    // Determine report start and end dates, with fallbacks if reportMonths ends up empty
     const reportStartDate = reportMonths.length > 0 ? reportMonths[0] : startOfMonth(subMonths(today, 3));
     const reportEndDate = reportMonths.length > 0 ? endOfMonth(reportMonths[reportMonths.length - 1]) : endOfMonth(subMonths(today, 1));
 
@@ -162,15 +158,15 @@ export default function ReportsPage() {
       expenses: quarterlyExpenses,
       summary_notes: `Report generated on ${format(today, "PPP")}. Data reflects records from ${format(reportStartDate, "PP")} to ${format(reportEndDate, "PP")}.`
     };
-  }, [incomeRecords, titheRecords, expenseRecords, format, subMonths, startOfMonth, endOfMonth, getYear, getMonth]);
+  }, [incomeRecords, titheRecords, expenseRecords, isLoadingIncome, isLoadingTithes, isLoadingExpenses, format, subMonths, startOfMonth, endOfMonth, getMonth, getYear]);
 
   const processedTrendData = useMemo(() => {
-    if (!incomeRecords || !titheRecords || !expenseRecords) return null;
+    if (isLoadingIncome || isLoadingTithes || isLoadingExpenses || !incomeRecords || !titheRecords || !expenseRecords) return null;
 
     const monthlyRecords: { month: string; income: number; expenses: number }[] = [];
     const today = new Date();
 
-    for (let i = 11; i >= 0; i--) { // Last 12 full months
+    for (let i = 11; i >= 0; i--) { 
       const targetMonthDate = subMonths(today, i);
       const monthKey = format(targetMonthDate, "yyyy-MM");
       const monthStart = startOfMonth(targetMonthDate);
@@ -197,7 +193,7 @@ export default function ReportsPage() {
       monthlyRecords.push({ month: monthKey, income: monthlyIncomeTotal, expenses: monthlyExpensesTotal });
     }
     return { monthly_records: monthlyRecords };
-  }, [incomeRecords, titheRecords, expenseRecords, format, subMonths, startOfMonth, endOfMonth]);
+  }, [incomeRecords, titheRecords, expenseRecords, isLoadingIncome, isLoadingTithes, isLoadingExpenses, format, subMonths, startOfMonth, endOfMonth]);
 
 
   const handleGenerateReport = async () => {
@@ -240,21 +236,21 @@ export default function ReportsPage() {
     }
   };
 
-  if (isLoadingData) {
+  if (authLoading) {
     return (
       <div className="flex justify-center items-center h-[calc(100vh-100px)]">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-2">Loading financial data for reports...</p>
+        <p className="ml-2">Loading user session...</p>
       </div>
     );
   }
-
-  if (dataError) {
+  
+  if (authError) {
     return (
       <Alert variant="destructive" className="mt-4">
         <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Error Loading Data</AlertTitle>
-        <AlertDescription>{dataError.message || "Could not load financial data for reports."}</AlertDescription>
+        <AlertTitle>Authentication Error</AlertTitle>
+        <AlertDescription>{authError.message || "Could not load user session."}</AlertDescription>
       </Alert>
     );
   }
@@ -269,23 +265,52 @@ export default function ReportsPage() {
     );
   }
 
-  const isQuarterlyReportEmpty = quarterlyReport && !quarterlyReport.reportSummary;
-  const isFinancialTrendsEmpty = financialTrends && !financialTrends.trends && !financialTrends.insights && !financialTrends.recommendations;
-  
-  // Condition to check if there's effectively no data for the AI to process for quarterly reports
-  const noDataForQuarterlyReport = !isLoadingData && 
-                                  incomeRecords && titheRecords && expenseRecords && // Ensure source arrays are loaded
-                                  !processedQuarterlyData?.income.offerings &&
-                                  !processedQuarterlyData?.income.tithes &&
-                                  !processedQuarterlyData?.income.donations &&
-                                  !processedQuarterlyData?.income.other &&
-                                  Object.keys(processedQuarterlyData?.expenses || {}).length === 0;
+  // Separate loading state for financial data after auth is confirmed
+  if (isLoadingIncome || isLoadingTithes || isLoadingExpenses) {
+    return (
+      <div className="flex justify-center items-center h-[calc(100vh-100px)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-2">Loading financial data for reports...</p>
+      </div>
+    );
+  }
 
-  // Condition for trend data (simplified: checks if monthly_records is empty or all zeros)
-  const noDataForTrendAnalysis = !isLoadingData &&
-                                 incomeRecords && titheRecords && expenseRecords && // Ensure source arrays are loaded
-                                 (!processedTrendData?.monthly_records || 
-                                  processedTrendData.monthly_records.every(m => m.income === 0 && m.expenses === 0));
+  // Error handling for financial data loading
+  if (errorIncome || errorTithes || errorExpenses) {
+     return (
+      <Alert variant="destructive" className="mt-4">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Error Loading Financial Data</AlertTitle>
+        <AlertDescription>{errorIncome?.message || errorTithes?.message || errorExpenses?.message || "Could not load financial data."}</AlertDescription>
+      </Alert>
+    );
+  }
+  
+  const sourceDataAvailable = !!(incomeRecords && titheRecords && expenseRecords);
+
+  // Helper: Check if the processed quarterly data object represents no actual financial activity
+  const isProcessedQuarterlyDataEffectivelyEmpty =
+    !processedQuarterlyData ||
+    (processedQuarterlyData.income &&
+        processedQuarterlyData.income.offerings === 0 &&
+        processedQuarterlyData.income.tithes === 0 &&
+        processedQuarterlyData.income.donations === 0 &&
+        processedQuarterlyData.income.other === 0 &&
+        Object.keys(processedQuarterlyData.expenses || {}).length === 0);
+
+  const noDataForQuarterlyReport = !isLoadingIncome && !isLoadingTithes && !isLoadingExpenses && sourceDataAvailable && isProcessedQuarterlyDataEffectivelyEmpty;
+
+  // Helper: Check if the processed trend data object represents no actual financial activity
+  const isProcessedTrendDataEffectivelyEmpty =
+    !processedTrendData ||
+    !processedTrendData.monthly_records ||
+    processedTrendData.monthly_records.length === 0 ||
+    processedTrendData.monthly_records.every(m => m.income === 0 && m.expenses === 0);
+  
+  const noDataForTrendAnalysis = !isLoadingIncome && !isLoadingTithes && !isLoadingExpenses && sourceDataAvailable && isProcessedTrendDataEffectivelyEmpty;
+
+  const isQuarterlyReportGeneratedEmpty = quarterlyReport && !quarterlyReport.reportSummary;
+  const isFinancialTrendsGeneratedEmpty = financialTrends && !financialTrends.trends && !financialTrends.insights && !financialTrends.recommendations;
 
 
   return (
@@ -315,7 +340,11 @@ export default function ReportsPage() {
             <CardDescription>Generates a summary report using financial data from the last 3 full months.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button onClick={handleGenerateReport} disabled={isGeneratingReport || isLoadingData || !processedQuarterlyData} className="w-full md:w-auto">
+            <Button 
+              onClick={handleGenerateReport} 
+              disabled={isGeneratingReport || isLoadingIncome || isLoadingTithes || isLoadingExpenses || !sourceDataAvailable || noDataForQuarterlyReport} 
+              className="w-full md:w-auto"
+            >
               {isGeneratingReport ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -333,12 +362,12 @@ export default function ReportsPage() {
                 <p className="text-sm whitespace-pre-wrap">{quarterlyReport.reportSummary}</p>
               </div>
             )}
-            {isQuarterlyReportEmpty && !isGeneratingReport && !reportError &&(
+            {isQuarterlyReportGeneratedEmpty && !isGeneratingReport && !reportError && !noDataForQuarterlyReport && (
               <Alert variant="default" className="mt-4">
                 <Sparkles className="h-4 w-4 text-primary" />
                 <AlertTitle>Report Generated - Summary Empty</AlertTitle>
                 <AlertDescription>
-                  The AI generated a report, but the summary is empty. This might occur if there's very little or no financial activity in the selected period.
+                  The AI generated a report, but the summary is empty. This might occur if there's very little or no financial activity in the selected period, or the AI could not derive a summary.
                 </AlertDescription>
               </Alert>
             )}
@@ -351,7 +380,11 @@ export default function ReportsPage() {
             <CardDescription>Identifies trends, insights, and recommendations using data from the last 12 full months.</CardDescription>
           </Header>
           <CardContent className="space-y-4">
-            <Button onClick={handleIdentifyTrends} disabled={isIdentifyingTrends || isLoadingData || !processedTrendData} className="w-full md:w-auto">
+            <Button 
+              onClick={handleIdentifyTrends} 
+              disabled={isIdentifyingTrends || isLoadingIncome || isLoadingTithes || isLoadingExpenses || !sourceDataAvailable || noDataForTrendAnalysis} 
+              className="w-full md:w-auto"
+            >
               {isIdentifyingTrends ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -385,12 +418,12 @@ export default function ReportsPage() {
                 )}
               </div>
             )}
-            {isFinancialTrendsEmpty && !isIdentifyingTrends && !trendsError && (
+            {isFinancialTrendsGeneratedEmpty && !isIdentifyingTrends && !trendsError && !noDataForTrendAnalysis && (
                  <Alert variant="default" className="mt-4">
                     <Sparkles className="h-4 w-4 text-primary" />
                     <AlertTitle>Analysis Complete - Content Empty</AlertTitle>
                     <AlertDescription>
-                    The AI completed the analysis, but the trends, insights, or recommendations are empty. This might occur if there's very little or no financial activity in the selected period.
+                    The AI completed the analysis, but the trends, insights, or recommendations are empty. This might occur if there's very little or no financial activity in the selected period, or the AI could not derive meaningful results.
                     </AlertDescription>
                 </Alert>
             )}
@@ -401,4 +434,3 @@ export default function ReportsPage() {
   );
 }
 
-    
