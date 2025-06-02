@@ -86,7 +86,7 @@ export default function ReportsPage() {
   const [authUser, authLoading, authError] = useAuthState(auth);
 
   const incomeCollectionRef = authUser ? collection(db, 'income_records') : null;
-  const incomeQuery = incomeCollectionRef 
+  const incomeQuery = incomeCollectionRef
     ? query(incomeCollectionRef).withConverter<IncomeRecord>(incomeConverter)
     : null;
   const [incomeRecords, isLoadingIncome, errorIncome] = useCollectionData(incomeQuery);
@@ -102,10 +102,10 @@ export default function ReportsPage() {
     ? query(expensesCollectionRef).withConverter<ExpenseRecord>(expenseConverter)
     : null;
   const [expenseRecords, isLoadingExpenses, errorExpenses] = useCollectionData(expensesQuery);
-  
+
   const [quarterlyReport, setQuarterlyReport] = useState<GenerateFinancialReportOutput | null>(null);
   const [financialTrends, setFinancialTrends] = useState<IdentifyFinancialTrendsOutput | null>(null);
-  
+
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [isIdentifyingTrends, setIsIdentifyingTrends] = useState(false);
 
@@ -123,9 +123,10 @@ export default function ReportsPage() {
     for (let i = 3; i >= 1; i--) { // Last 3 full months
       reportMonths.push(startOfMonth(subMonths(today, i)));
     }
-    
-    const reportStartDate = reportMonths[0];
-    const reportEndDate = endOfMonth(reportMonths[reportMonths.length - 1]);
+
+    // Determine report start and end dates, with fallbacks if reportMonths ends up empty
+    const reportStartDate = reportMonths.length > 0 ? reportMonths[0] : startOfMonth(subMonths(today, 3));
+    const reportEndDate = reportMonths.length > 0 ? endOfMonth(reportMonths[reportMonths.length - 1]) : endOfMonth(subMonths(today, 1));
 
     const quarterlyIncome = {
       offerings: 0,
@@ -161,7 +162,7 @@ export default function ReportsPage() {
       expenses: quarterlyExpenses,
       summary_notes: `Report generated on ${format(today, "PPP")}. Data reflects records from ${format(reportStartDate, "PP")} to ${format(reportEndDate, "PP")}.`
     };
-  }, [incomeRecords, titheRecords, expenseRecords]);
+  }, [incomeRecords, titheRecords, expenseRecords, format, subMonths, startOfMonth, endOfMonth, getYear, getMonth]);
 
   const processedTrendData = useMemo(() => {
     if (!incomeRecords || !titheRecords || !expenseRecords) return null;
@@ -186,7 +187,7 @@ export default function ReportsPage() {
           monthlyIncomeTotal += record.amount;
         }
       });
-      
+
       let monthlyExpensesTotal = 0;
       expenseRecords.forEach(record => {
         if (record.date >= monthStart && record.date <= monthEnd) {
@@ -196,7 +197,7 @@ export default function ReportsPage() {
       monthlyRecords.push({ month: monthKey, income: monthlyIncomeTotal, expenses: monthlyExpensesTotal });
     }
     return { monthly_records: monthlyRecords };
-  }, [incomeRecords, titheRecords, expenseRecords]);
+  }, [incomeRecords, titheRecords, expenseRecords, format, subMonths, startOfMonth, endOfMonth]);
 
 
   const handleGenerateReport = async () => {
@@ -257,7 +258,7 @@ export default function ReportsPage() {
       </Alert>
     );
   }
-  
+
   if (!authUser) {
      return (
       <Alert variant="destructive" className="mt-4">
@@ -267,6 +268,25 @@ export default function ReportsPage() {
       </Alert>
     );
   }
+
+  const isQuarterlyReportEmpty = quarterlyReport && !quarterlyReport.reportSummary;
+  const isFinancialTrendsEmpty = financialTrends && !financialTrends.trends && !financialTrends.insights && !financialTrends.recommendations;
+  
+  // Condition to check if there's effectively no data for the AI to process for quarterly reports
+  const noDataForQuarterlyReport = !isLoadingData && 
+                                  incomeRecords && titheRecords && expenseRecords && // Ensure source arrays are loaded
+                                  !processedQuarterlyData?.income.offerings &&
+                                  !processedQuarterlyData?.income.tithes &&
+                                  !processedQuarterlyData?.income.donations &&
+                                  !processedQuarterlyData?.income.other &&
+                                  Object.keys(processedQuarterlyData?.expenses || {}).length === 0;
+
+  // Condition for trend data (simplified: checks if monthly_records is empty or all zeros)
+  const noDataForTrendAnalysis = !isLoadingData &&
+                                 incomeRecords && titheRecords && expenseRecords && // Ensure source arrays are loaded
+                                 (!processedTrendData?.monthly_records || 
+                                  processedTrendData.monthly_records.every(m => m.income === 0 && m.expenses === 0));
+
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -287,7 +307,7 @@ export default function ReportsPage() {
             </Alert>
         </CardContent>
       </Card>
-      
+
       <div className="grid md:grid-cols-2 gap-6">
         <Card className="shadow-lg">
           <CardHeader>
@@ -304,14 +324,23 @@ export default function ReportsPage() {
               Generate Quarterly Report
             </Button>
             {reportError && <Alert variant="destructive"><AlertTitle>Error</AlertTitle><AlertDescription>{reportError}</AlertDescription></Alert>}
-            {!reportError && !isGeneratingReport && !processedQuarterlyData && !isLoadingData && (
-                <Alert variant="default"><AlertDescription>Not enough data to generate a quarterly report yet.</AlertDescription></Alert>
+            {!reportError && !isGeneratingReport && noDataForQuarterlyReport && (
+                <Alert variant="default"><AlertTitle>No Data for Period</AlertTitle><AlertDescription>There is no financial data recorded for the last 3 full months. Please add records for that period to generate a report.</AlertDescription></Alert>
             )}
-            {quarterlyReport && (
+            {quarterlyReport && quarterlyReport.reportSummary && (
               <div className="mt-4 p-4 border rounded-md bg-muted/50">
                 <h3 className="font-semibold text-lg mb-2 text-primary">Generated Report Summary:</h3>
                 <p className="text-sm whitespace-pre-wrap">{quarterlyReport.reportSummary}</p>
               </div>
+            )}
+            {isQuarterlyReportEmpty && !isGeneratingReport && !reportError &&(
+              <Alert variant="default" className="mt-4">
+                <Sparkles className="h-4 w-4 text-primary" />
+                <AlertTitle>Report Generated - Summary Empty</AlertTitle>
+                <AlertDescription>
+                  The AI generated a report, but the summary is empty. This might occur if there's very little or no financial activity in the selected period.
+                </AlertDescription>
+              </Alert>
             )}
           </CardContent>
         </Card>
@@ -320,7 +349,7 @@ export default function ReportsPage() {
           <CardHeader>
             <CardTitle>Identify Financial Trends</CardTitle>
             <CardDescription>Identifies trends, insights, and recommendations using data from the last 12 full months.</CardDescription>
-          </CardHeader>
+          </Header>
           <CardContent className="space-y-4">
             <Button onClick={handleIdentifyTrends} disabled={isIdentifyingTrends || isLoadingData || !processedTrendData} className="w-full md:w-auto">
               {isIdentifyingTrends ? (
@@ -331,24 +360,39 @@ export default function ReportsPage() {
               Identify Trends
             </Button>
             {trendsError && <Alert variant="destructive"><AlertTitle>Error</AlertTitle><AlertDescription>{trendsError}</AlertDescription></Alert>}
-             {!trendsError && !isIdentifyingTrends && !processedTrendData && !isLoadingData && (
-                <Alert variant="default"><AlertDescription>Not enough data to identify financial trends yet.</AlertDescription></Alert>
+             {!trendsError && !isIdentifyingTrends && noDataForTrendAnalysis && (
+                <Alert variant="default"><AlertTitle>No Data for Period</AlertTitle><AlertDescription>There is no financial data recorded for the last 12 full months. Please add records for that period to identify trends.</AlertDescription></Alert>
             )}
-            {financialTrends && (
+            {financialTrends && (financialTrends.trends || financialTrends.insights || financialTrends.recommendations) && (
               <div className="mt-4 p-4 border rounded-md bg-muted/50 space-y-3">
-                <div>
-                  <h3 className="font-semibold text-lg mb-1 text-primary">Key Trends:</h3>
-                  <p className="text-sm whitespace-pre-wrap">{financialTrends.trends}</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg mb-1 text-primary">Insights:</h3>
-                  <p className="text-sm whitespace-pre-wrap">{financialTrends.insights}</p>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg mb-1 text-primary">Recommendations:</h3>
-                  <p className="text-sm whitespace-pre-wrap">{financialTrends.recommendations}</p>
-                </div>
+                {financialTrends.trends && (
+                  <div>
+                    <h3 className="font-semibold text-lg mb-1 text-primary">Key Trends:</h3>
+                    <p className="text-sm whitespace-pre-wrap">{financialTrends.trends}</p>
+                  </div>
+                )}
+                {financialTrends.insights && (
+                  <div>
+                    <h3 className="font-semibold text-lg mb-1 text-primary">Insights:</h3>
+                    <p className="text-sm whitespace-pre-wrap">{financialTrends.insights}</p>
+                  </div>
+                )}
+                {financialTrends.recommendations && (
+                  <div>
+                    <h3 className="font-semibold text-lg mb-1 text-primary">Recommendations:</h3>
+                    <p className="text-sm whitespace-pre-wrap">{financialTrends.recommendations}</p>
+                  </div>
+                )}
               </div>
+            )}
+            {isFinancialTrendsEmpty && !isIdentifyingTrends && !trendsError && (
+                 <Alert variant="default" className="mt-4">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <AlertTitle>Analysis Complete - Content Empty</AlertTitle>
+                    <AlertDescription>
+                    The AI completed the analysis, but the trends, insights, or recommendations are empty. This might occur if there's very little or no financial activity in the selected period.
+                    </AlertDescription>
+                </Alert>
             )}
           </CardContent>
         </Card>
