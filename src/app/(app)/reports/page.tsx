@@ -288,31 +288,45 @@ export default function ReportsPage() {
   
   const sourceDataAvailable = !!(incomeRecords && titheRecords && expenseRecords);
 
-  // Helper: Check if the processed quarterly data object represents no actual financial activity
-  const isProcessedQuarterlyDataEffectivelyEmpty =
+  const isProcessedQuarterlyDataEffectivelyEmpty = (
     !processedQuarterlyData ||
-    (processedQuarterlyData.income &&
-        processedQuarterlyData.income.offerings === 0 &&
-        processedQuarterlyData.income.tithes === 0 &&
-        processedQuarterlyData.income.donations === 0 &&
-        processedQuarterlyData.income.other === 0 &&
-        Object.keys(processedQuarterlyData.expenses || {}).length === 0);
+    (
+      processedQuarterlyData.income &&
+      processedQuarterlyData.income.offerings === 0 &&
+      processedQuarterlyData.income.tithes === 0 &&
+      processedQuarterlyData.income.donations === 0 &&
+      processedQuarterlyData.income.other === 0 &&
+      Object.keys(processedQuarterlyData.expenses || {}).length === 0
+    )
+  );
 
-  const noDataForQuarterlyReport = !isLoadingIncome && !isLoadingTithes && !isLoadingExpenses && sourceDataAvailable && isProcessedQuarterlyDataEffectivelyEmpty;
+  const noDataForQuarterlyReport = (
+    !isLoadingIncome &&
+    !isLoadingTithes &&
+    !isLoadingExpenses &&
+    sourceDataAvailable &&
+    isProcessedQuarterlyDataEffectivelyEmpty
+  );
 
-  // Helper: Check if the processed trend data object represents no actual financial activity
-  const isProcessedTrendDataEffectivelyEmpty =
+  const isProcessedTrendDataEffectivelyEmpty = (
     !processedTrendData ||
     !processedTrendData.monthly_records ||
     processedTrendData.monthly_records.length === 0 ||
-    processedTrendData.monthly_records.every(m => m.income === 0 && m.expenses === 0);
+    processedTrendData.monthly_records.every(m => m.income === 0 && m.expenses === 0)
+  );
   
-  const noDataForTrendAnalysis = !isLoadingIncome && !isLoadingTithes && !isLoadingExpenses && sourceDataAvailable && isProcessedTrendDataEffectivelyEmpty;
+  const noDataForTrendAnalysis = (
+    !isLoadingIncome &&
+    !isLoadingTithes &&
+    !isLoadingExpenses &&
+    sourceDataAvailable &&
+    isProcessedTrendDataEffectivelyEmpty
+  );
 
   const isQuarterlyReportGeneratedEmpty = quarterlyReport && !quarterlyReport.reportSummary;
-  const isFinancialTrendsGeneratedEmpty = financialTrends && !financialTrends.trends && !financialTrends.insights && !financialTrends.recommendations;
+  const isFinancialTrendsGeneratedEmpty = financialTrends && (!financialTrends.trends && !financialTrends.insights && !financialTrends.recommendations);
 
-
+  // PARSER_CHECKPOINT: Just before main return statement
   return (
     <div className="space-y-6 md:space-y-8">
       <h1 className="text-3xl font-bold tracking-tight text-foreground">AI-Powered Financial Reports</h1>
@@ -342,7 +356,7 @@ export default function ReportsPage() {
           <CardContent className="space-y-4">
             <Button 
               onClick={handleGenerateReport} 
-              disabled={isGeneratingReport || isLoadingIncome || isLoadingTithes || isLoadingExpenses || !sourceDataAvailable || noDataForQuarterlyReport} 
+              disabled={isGeneratingReport || !sourceDataAvailable || noDataForQuarterlyReport} 
               className="w-full md:w-auto"
             >
               {isGeneratingReport ? (
@@ -382,7 +396,7 @@ export default function ReportsPage() {
           <CardContent className="space-y-4">
             <Button 
               onClick={handleIdentifyTrends} 
-              disabled={isIdentifyingTrends || isLoadingIncome || isLoadingTithes || isLoadingExpenses || !sourceDataAvailable || noDataForTrendAnalysis} 
+              disabled={isIdentifyingTrends || !sourceDataAvailable || noDataForTrendAnalysis} 
               className="w-full md:w-auto"
             >
               {isIdentifyingTrends ? (
