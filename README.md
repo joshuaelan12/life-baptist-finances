@@ -1,5 +1,5 @@
 # Life Baptist Finances.
 
-Financial Management Sustem for Life Baptist Church Mutengene, Cameroon.
+Financial Management System for Life Baptist Church Mutengene, Cameroon.
 
 
