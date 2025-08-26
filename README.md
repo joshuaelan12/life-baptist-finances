@@ -1,5 +1,5 @@
-# Firebase Studio
+# Life Baptist Finances.
 
-This is a NextJS starter in Firebase Studio.
+Financial Management Sustem for Life Baptist Church Mutengene, Cameroon.
 
-To get started, take a look at src/app/page.tsx.
+
